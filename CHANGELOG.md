@@ -16,6 +16,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) 
 ### Removed
 - 
 ### Security
+-
+
+## [1.0.2-rc3]
+### Added
+- 
+### Changed
+- 
+### Fixed
+- 
+### Deprecated
+- 
+### Removed
+- 
+### Security
 - 
 
 ## [1.0.2-rc2] - 2025-11-25
@@ -62,6 +76,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) 
 - File-based auth token with 0600 permissions
 
 
-[Unreleased]: https://github.com/hycord/irc-notify/compare/v1.0.2-rc2...HEAD
+[Unreleased]: https://github.com/hycord/irc-notify/compare/v1.0.2-rc3...HEAD
+[1.0.2-rc3]: https://github.com/hycord/irc-notify/releases/tag/v1.0.2-rc3
 [1.0.2-rc2]: https://github.com/hycord/irc-notify/releases/tag/v1.0.2-rc2
 [1.0.2-rc1]: https://github.com/hycord/irc-notify/releases/tag/v1.0.2-rc1
