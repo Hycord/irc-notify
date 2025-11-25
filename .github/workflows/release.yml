@@ -1,44 +1,19 @@
-name: Release
+name: Build
 
 on:
   push:
-    tags:
-      - 'v*.*.*'
+    branches:
+      - main
 
 permissions:
-  contents: write
   packages: write
 
-concurrency:
-  group: release
-  cancel-in-progress: false
-
 jobs:
-  release:
+  build:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          ref: main
-
-      - name: Extract version from tag
-        id: version
-        run: |
-          TAG=${GITHUB_REF#refs/tags/v}
-          echo "version=${TAG}" >> $GITHUB_OUTPUT
-          echo "Version: ${TAG}"
-          if ! [[ "${TAG}" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-a-zA-Z0-9\.]+)?$ ]]; then
-            echo "Invalid version format" >&2
-            exit 1
-          fi
-          # Detect prerelease (contains hyphen)
-          if [[ "${TAG}" =~ - ]]; then
-            echo "prerelease=true" >> $GITHUB_OUTPUT
-          else
-            echo "prerelease=false" >> $GITHUB_OUTPUT
-          fi
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v1
@@ -81,25 +56,5 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: |
-            ghcr.io/${{ steps.vars.outputs.repo_owner_lower }}/irc-notify:v${{ steps.version.outputs.version }}
+            ghcr.io/${{ steps.vars.outputs.repo_owner_lower }}/irc-notify:latest
             ghcr.io/${{ steps.vars.outputs.repo_owner_lower }}/irc-notify:${{ steps.vars.outputs.sha_short }}
-            ${{ steps.version.outputs.prerelease == 'true' && '' || format('ghcr.io/{0}/irc-notify:latest', steps.vars.outputs.repo_owner_lower) }}
-
-      # - name: Upload config export artifact (if present)
-      #   uses: actions/upload-artifact@v4
-      #   with:
-      #     name: config-export
-      #     path: |
-      #       config-export-*.json.gz
-      #     if-no-files-found: warn
-
-      # - name: Create GitHub Release
-      #   uses: softprops/action-gh-release@v2
-      #   with:
-      #     tag_name: v${{ steps.version.outputs.version }}
-      #     name: v${{ steps.version.outputs.version }}
-      #     prerelease: ${{ steps.version.outputs.prerelease }}
-      #     generate_release_notes: true
-      #     fail_on_unmatched_files: false
-      #     files: |
-      #       config-export-*.json.gz
