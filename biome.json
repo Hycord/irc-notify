@@ -1,0 +1,17 @@
+{
+  "formatter": {
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineWidth": 100,
+    "ignore": ["dist", "logs", "**/fixtures/**"]
+  },
+  "organizeImports": {
+    "enabled": true
+  },
+  "linter": {
+    "enabled": false
+  },
+  "files": {
+    "include": ["./src/**/*.ts", "./config/**/*.ts", "./docs/**/*.md", "./tests/**/*.ts"]
+  }
+}

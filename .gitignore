@@ -1,0 +1,7 @@
+node_modules
+dist
+.
+logs/
+.github/*.md
+*.json.gz
+**/auth_token.txt

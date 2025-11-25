@@ -1,0 +1,23 @@
+{
+  "id": "test-event",
+  "name": "Alert Phrase",
+  "enabled": true,
+  "baseEvent": "message",
+  "serverIds": [
+    "*"
+  ],
+  "sinkIds": [
+    "test-sink"
+  ],
+  "priority": 10,
+  "filters": {
+    "operator": "AND",
+    "filters": [
+      {
+        "field": "message.content",
+        "operator": "contains",
+        "value": "alert"
+      }
+    ]
+  }
+}

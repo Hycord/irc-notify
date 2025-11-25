@@ -1,0 +1,19 @@
+{
+  "global": {
+    "pollInterval": 500,
+    "debug": true,
+    "configDirectory": "."
+  },
+  "clients": [
+    "test-client"
+  ],
+  "servers": [
+    "test-server"
+  ],
+  "events": [
+    "test-event"
+  ],
+  "sinks": [
+    "test-sink"
+  ]
+}

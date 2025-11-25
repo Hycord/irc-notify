@@ -1,0 +1,43 @@
+{
+  "id": "test-client",
+  "type": "textual",
+  "name": "Test Client",
+  "enabled": true,
+  "logDirectory": "/Users/masen/code/oss/irc-notify/tests/fixtures/e2e/logs/textual",
+  "discovery": {
+    "patterns": {
+      "channels": "**/Channels/**/*.txt"
+    },
+    "pathExtraction": {
+      "serverPattern": "/([^/]+)\\s+\\([^)]+\\)/",
+      "serverGroup": 1,
+      "channelPattern": "/Channels/([^/]+)/",
+      "channelGroup": 1,
+      "consolePattern": "/Console/"
+    }
+  },
+  "serverDiscovery": {
+    "type": "static",
+    "servers": [
+      {
+        "hostname": "test.server.local"
+      }
+    ]
+  },
+  "fileType": {
+    "type": "text"
+  },
+  "parserRules": [
+    {
+      "name": "privmsg",
+      "pattern": "^\\[(?<timestamp>[^\\]]+)\\]\\s+<(?<nickname>[^>]+)>\\s+(?<content>.+)$",
+      "messageType": "privmsg",
+      "captures": {
+        "timestamp": "timestamp",
+        "nickname": "nickname",
+        "content": "content"
+      },
+      "priority": 50
+    }
+  ]
+}

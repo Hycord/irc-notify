@@ -1,0 +1,11 @@
+{
+  "id": "test-sink",
+  "type": "custom",
+  "name": "Test Capture Sink",
+  "enabled": true,
+  "config": {},
+  "template": {
+    "title": "{{event.name}}",
+    "body": "{{message.content}}"
+  }
+}

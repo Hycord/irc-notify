@@ -1,0 +1,7 @@
+{
+  "id": "test-server",
+  "hostname": "test.server.local",
+  "displayName": "TestServer",
+  "clientNickname": "tester",
+  "enabled": true
+}

@@ -1,0 +1,135 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Semantic version (e.g. 1.2.3)"
+        required: true
+      prerelease:
+        description: "Mark as pre-release (skip latest tag)"
+        type: boolean
+        required: false
+        default: false
+
+permissions:
+  contents: write
+  packages: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate version format
+        run: |
+          echo "Version: ${{ inputs.version }}"
+          if ! [[ "${{ inputs.version }}" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-a-zA-Z0-9\.]+)?$ ]]; then
+            echo "Invalid version format" >&2; exit 1; fi
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
+
+      - name: Prepare release (update package.json & CHANGELOG)
+        run: bun scripts/prepare-release.ts ${{ inputs.version }}
+
+      - name: Commit release prep
+        run: |
+          if [[ -n "$(git status --porcelain)" ]]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add package.json CHANGELOG.md
+            git commit -m "release: v${{ inputs.version }}"
+            git push origin HEAD:${{ github.ref_name }}
+          else
+            echo "No changes to commit"
+          fi
+
+      - name: Tag version
+        run: |
+          if git rev-parse "v${{ inputs.version }}" >/dev/null 2>&1; then
+            echo "Tag already exists"; exit 0; fi
+          git tag -a v${{ inputs.version }} -m "Release v${{ inputs.version }}"
+          git push origin v${{ inputs.version }}
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Format check
+        run: bun run format:check
+
+      - name: Run tests
+        run: bun test
+
+      - name: Validate configuration
+        run: bun run config:validate
+
+      - name: Build app
+        run: bun run build
+
+      - name: Export configuration bundle
+        run: bun run config:export
+
+      - name: Determine commit SHA short
+        id: vars
+        run: echo "sha_short=${GITHUB_SHA::12}" >> $GITHUB_OUTPUT
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/irc-notify:v${{ inputs.version }}
+            ghcr.io/${{ github.repository_owner }}/irc-notify:${{ steps.vars.outputs.sha_short }}
+            ${{ inputs.prerelease && '' || format('ghcr.io/{0}/irc-notify:latest', github.repository_owner) }}
+
+      - name: Extract release notes
+        id: notes
+        run: |
+          bun scripts/extract-changelog.ts ${{ inputs.version }} > RELEASE_NOTES.md
+          echo "notes<<EOF" >> $GITHUB_OUTPUT
+          sed 's/\r$//' RELEASE_NOTES.md >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Upload config export artifact (if present)
+        uses: actions/upload-artifact@v4
+        with:
+          name: config-export
+          path: |
+            config-export-*.json.gz
+          if-no-files-found: warn
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ inputs.version }}
+          name: v${{ inputs.version }}
+          prerelease: ${{ inputs.prerelease }}
+          body: ${{ steps.notes.outputs.notes }}
+          files: |
+            config-export-*.json.gz
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
