@@ -100,7 +100,6 @@ jobs:
           name: v${{ steps.version.outputs.version }}
           prerelease: ${{ steps.version.outputs.prerelease }}
           generate_release_notes: true
+          fail_on_unmatched_files: false
           files: |
             config-export-*.json.gz
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
