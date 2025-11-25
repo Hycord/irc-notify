@@ -16,6 +16,8 @@
     "config:migrate": "bun src/cli.ts migrate",
     "dev:gen": "bun src/cli.ts gen-dev",
     "dev:cleanup": "bun src/cli.ts cleanup-dev",
+    "changelog:sync": "bun scripts/check-changelog-sync.ts",
+    "tag": "bun scripts/generate-tag-message.ts",
     "test": "bun test",
     "format": "bunx biome check . --fix",
     "format:check": "bunx biome check ."

@@ -59,9 +59,10 @@ jobs:
             git commit -m "chore: update changelog and package.json for v${{ steps.version.outputs.version }}"
             git push origin main
             
-            # Wait for push to fully propagate
-            echo "Waiting for push to complete..."
-            sleep 3
+            # Fetch and reset to the pushed commit to ensure we have the updated files
+            echo "Syncing with remote..."
+            git fetch origin main
+            git reset --hard origin/main
           else
             echo "No changes to commit"
           fi
