@@ -3,6 +3,4 @@ dist
 .
 logs/
 .github/*.md
-*.json.gz
 **/auth_token.txt
-./config/
