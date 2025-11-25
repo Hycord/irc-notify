@@ -1,22 +1,16 @@
-import { defineConfig } from '../src/config/types';
+import { defineConfig } from "../src/config/types";
 
 export default defineConfig({
-  "global": {
-    "defaultLogDirectory": "../logs",
-    "pollInterval": 1000,
-    "debug": false,
-    "rescanLogsOnStartup": false,
-    "configDirectory": "."
+  global: {
+    defaultLogDirectory: "../logs",
+    pollInterval: 1000,
+    debug: false,
+    rescanLogsOnStartup: false,
+    configDirectory: ".",
   },
-  "clients": [
-    "thelounge",
-  ],
-  "servers": [
-    "libera",
-    "orpheus",
-    "mam"
-  ],
-  "events": [
+  clients: ["thelounge"],
+  servers: ["libera", "orpheus", "mam"],
+  events: [
     "phrase-alert",
     "client-quit",
     "client-join",
@@ -25,11 +19,7 @@ export default defineConfig({
     "user-quit",
     "bot-message",
     "server-notice",
-    "client-ping"
+    "client-ping",
   ],
-  "sinks": [
-    "file-log",
-    "ntfy",
-    "console"
-  ]
+  sinks: ["file-log", "ntfy", "console"],
 });
