@@ -12,11 +12,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) 
 
 ## [1.0.2-rc2] - 2025-11-24
 
+## [1.0.2-rc1] - 2025-11-25
+
 ## [1.0.1] - 2025-11-24
 
 ## [1.0.0] - 2025-11-24
-
-## [1.0.2-rc1] - 2025-11-25
 ### Added
 - Initial public beta release
 - TypeScript-based configuration system with `define*()` helpers for validation
@@ -49,6 +49,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) 
 [1.0.2-rc4]: https://github.com/hycord/irc-notify/compare/v1.0.2-rc3...v1.0.2-rc4
 [1.0.2-rc3]: https://github.com/hycord/irc-notify/compare/v1.0.2-rc2...v1.0.2-rc3
 [1.0.2-rc2]: https://github.com/hycord/irc-notify/compare/v1.0.2-rc1...v1.0.2-rc2
+[1.0.2-rc1]: https://github.com/hycord/irc-notify/compare/v1.0.1...v1.0.2-rc1
 [1.0.1]: https://github.com/hycord/irc-notify/compare/v1.0.0...v1.0.1
-[1.0.0]: https://github.com/hycord/irc-notify/compare/v1.0.2-rc1...v1.0.0
-[1.0.2-rc1]: https://github.com/hycord/irc-notify/releases/tag/v1.0.2-rc1
+[1.0.0]: https://github.com/hycord/irc-notify/releases/tag/v1.0.0
