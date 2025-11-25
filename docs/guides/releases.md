@@ -24,42 +24,54 @@ Every successful build on `main` or a version tag publishes:
 - `vX.Y.Z`: Semantic version tag
 
 ## Automated Release Workflow (GitHub Actions)
-Releases are now managed by the `Release` workflow (`.github/workflows/release.yml`). It can be triggered manually via **Actions → Release → Run workflow**.
+Releases are now fully automated via the `Release` workflow (`.github/workflows/release.yml`). The workflow triggers automatically when you push a version tag.
 
-### Inputs
-- `version` (required): Semantic version like `1.2.3`
-- `prerelease` (optional): Mark release as pre-release (skips `latest` tag)
+### How to Release
+Simply push a tag with semantic version format:
+```bash
+git tag v1.2.3
+git push origin v1.2.3
+```
 
-### What the Workflow Does
-1. Validates version format
-2. Runs `bun scripts/prepare-release.ts` to:
+The workflow will automatically:
+1. Extract version from tag (validates format)
+2. Detect if prerelease (version contains hyphen like `v1.0.0-rc.1`)
+3. Check out the `main` branch
+4. Install dependencies
+5. Run `bun scripts/prepare-release.ts` to:
    - Update `package.json` version (if needed)
    - Move `[Unreleased]` changes into new `## [version] - YYYY-MM-DD` block in `CHANGELOG.md`
    - Reset `[Unreleased]` section skeleton
    - Update comparison links at bottom of changelog
-3. Commits changes + pushes to current branch
-4. Tags `vX.Y.Z`
-5. Installs dependencies
-6. Runs format check (`bun run format:check`)
-7. Runs tests (`bun test`)
-8. Validates configs (`bun run config:validate`)
-9. Builds the app (`bun run build`)
-10. Exports config bundle (`bun run config:export`)
-11. Builds and pushes multi-arch Docker image with tags:
+6. Commit changelog/package.json updates back to `main` branch
+7. Run format check (`bun run format:check`)
+8. Run tests (`bun test`)
+9. Validate configs (`bun run config:validate`)
+10. Build the app (`bun run build`)
+11. Export config bundle (`bun run config:export`)
+12. Build and push multi-arch Docker image with tags:
     - `vX.Y.Z`
     - `<commit-sha>` (12 chars)
     - `latest` (omitted if prerelease)
-12. Extracts release notes using `bun scripts/extract-changelog.ts`
-13. Creates GitHub Release (attaches config bundle)
+13. Extract release notes using `bun scripts/extract-changelog.ts`
+14. Create GitHub Release (attaches config bundle)
 
-### Manual Steps Before Triggering
-You still MUST:
+### Manual Steps Before Tagging
+You MUST:
 1. Ensure ALL documentation (`README.md`, `/docs`) reflects the changes being released
-2. Verify `CHANGELOG.md` `[Unreleased]` section categorization is correct
+2. Populate `CHANGELOG.md` `[Unreleased]` section with all changes
 3. Confirm tests pass locally (`bun test`)
+4. Commit all changes to `main`
+5. Push to GitHub
+6. Then create and push the version tag
 
-### Optional Branch-Based Flow
-You can still use a branch `release/vX.Y.Z` for review prior to triggering the workflow. Merge to `main`, then run the workflow.
+### Pre-releases
+For pre-release versions, include a hyphen in the tag:
+```bash
+git tag v1.0.0-rc.1
+git push origin v1.0.0-rc.1
+```
+Pre-releases are automatically detected and will not update the `latest` Docker tag.
 
 ## Legacy Manual Workflow (Fallback)
 If automation fails and you need a manual release:

@@ -52,19 +52,24 @@ const endOfUnreleasedIndex = nextHeadingMatch ? unreleasedIndex + nextHeadingMat
 
 const unreleasedContent = changelog.slice(unreleasedIndex, endOfUnreleasedIndex).trim();
 
+// Check if there's any actual content in Unreleased
+if (!unreleasedContent || unreleasedContent === '') {
+  die("No unreleased changes found in CHANGELOG.md. Add changes before releasing.");
+}
+
 // Prepare new version section using today's date
 const today = new Date().toISOString().split("T")[0];
 const newVersionHeading = `## [${version}] - ${today}`;
 
 // Skeleton for resetting Unreleased section
-const unreleasedSkeleton = `## [Unreleased]\n### Added\n- \n### Changed\n- \n### Fixed\n- \n### Deprecated\n- \n### Removed\n- \n### Security\n- \n`;
+const unreleasedSkeleton = `## [Unreleased]\n### Added\n\n### Changed\n\n### Fixed\n\n### Deprecated\n\n### Removed\n\n### Security\n`;
 
 // Build new changelog content
 const beforeUnreleased = changelog.slice(0, unreleasedMatch.index!);
 const afterUnreleasedContent = changelog.slice(endOfUnreleasedIndex); // contains previous versions + link refs
 
 // Insert new version section right after skeleton
-let newChangelogBody = beforeUnreleased + unreleasedSkeleton + "\n" + newVersionHeading + "\n" + unreleasedContent.replace(/^\n+/, "") + "\n\n" + afterUnreleasedContent;
+let newChangelogBody = beforeUnreleased + unreleasedSkeleton + "\n" + newVersionHeading + "\n" + unreleasedContent + "\n\n" + afterUnreleasedContent;
 
 // Update comparison links at bottom
 // Match link reference block (assuming at end of file)
