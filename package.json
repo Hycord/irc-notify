@@ -1,6 +1,6 @@
 {
   "name": "irc-notify",
-  "version": "0.0.0",
+  "version": "1.0.2-rc1",
   "description": "Highly extensible IRC Notification service.",
   "main": "src/index.ts",
   "scripts": {

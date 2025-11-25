@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) 
 
 ## [Unreleased]
 ### Added
+- 
+### Changed
+- 
+### Fixed
+- 
+### Deprecated
+- 
+### Removed
+- 
+### Security
+- 
+
+## [1.0.2-rc1] - 2025-11-25
+### Added
 - Initial public beta release
 - TypeScript-based configuration system with `define*()` helpers for validation
 - Strict type system for autocomplete and compile-time validation (`defineStrictEvent`)
@@ -34,3 +48,5 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) 
 - File-based auth token with 0600 permissions
 
 
+[Unreleased]: https://github.com/hycord/irc-notify/compare/v1.0.2-rc1...HEAD
+[1.0.2-rc1]: https://github.com/hycord/irc-notify/releases/tag/v1.0.2-rc1
