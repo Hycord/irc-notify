@@ -58,6 +58,7 @@ jobs:
             git add package.json CHANGELOG.md
             git commit -m "chore: update changelog and package.json for v${{ steps.version.outputs.version }}"
             git push origin main
+            git pull origin main --rebase
           else
             echo "No changes to commit"
           fi
@@ -70,9 +71,6 @@ jobs:
 
       - name: Validate configuration
         run: bun run config:validate
-
-      - name: Build app
-        run: bun run build
 
       - name: Export configuration bundle
         run: bun run config:export
