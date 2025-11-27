@@ -1,0 +1,36 @@
+{
+  "id": "phrase-alert",
+  "name": "Phrase Alert",
+  "enabled": false,
+  "baseEvent": "any",
+  "serverIds": [
+    "redacted"
+  ],
+  "filters": {
+    "operator": "AND",
+    "filters": [
+      {
+        "field": "message.content",
+        "operator": "contains",
+        "value": "testntfy"
+      }
+    ]
+  },
+  "sinkIds": [
+    "ntfy"
+  ],
+  "priority": 100,
+  "metadata": {
+    "description": "Triggers when a specific phrase is found in any message content, regardless of author. Edit the pattern field to customize the phrase.",
+    "sink": {
+      "ntfy": {
+        "priority": 5,
+        "tags": [
+          "bell",
+          "mag"
+        ]
+      }
+    }
+  },
+  "__originalId": "phrase-alert"
+}

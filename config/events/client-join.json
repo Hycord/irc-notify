@@ -1,0 +1,38 @@
+{
+  "id": "client-join",
+  "name": "You Connected",
+  "enabled": true,
+  "baseEvent": "join",
+  "serverIds": [
+    "redacted"
+  ],
+  "filters": {
+    "operator": "AND",
+    "filters": [
+      {
+        "field": "sender.nickname",
+        "operator": "equals",
+        "value": "{{server.metadata.clientNickname}}"
+      }
+    ]
+  },
+  "sinkIds": [
+    "ntfy"
+  ],
+  "priority": 200,
+  "group": "Generic",
+  "metadata": {
+    "description": "Triggers when the IRC client itself connects to a server or joins a channel",
+    "sink": {
+      "ntfy": {
+        "priority": "default",
+        "tags": [
+          "green_circle",
+          "white_check_mark",
+          "rocket"
+        ]
+      }
+    }
+  },
+  "__originalId": "client-join"
+}

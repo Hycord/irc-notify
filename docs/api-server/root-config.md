@@ -17,10 +17,6 @@ Get the current root configuration.
     "debug": false,
     "configDirectory": "/path/to/config"
   },
-  "clients": ["textual", "thelounge"],
-  "servers": ["libera", "oftc"],
-  "events": ["phrase-alert", "direct-message"],
-  "sinks": ["ntfy", "console"],
   "api": {
     "enabled": true,
     "port": 3000,
@@ -49,7 +45,7 @@ Content-Type: application/json
 }
 ```
 
-**Note:** Client, server, event, and sink IDs are auto-discovered from their respective directories and don't need to be listed.
+Note: Client, server, event, and sink IDs are auto-discovered from their directories and are not listed in the root config. If present in an uploaded config, they are ignored and stripped.
 
 **Response:**
 ```json
@@ -66,7 +62,7 @@ Content-Type: application/json
 - **Storage**: Always stores as `config.json`
 - **Reload**: Automatically triggers full system reload after update
 - **Validation**: Validates configuration structure before saving
-- **Auto-discovery**: Component IDs don't need to be listed - automatically discovered from directories
+- **Auto-discovery**: Components are discovered from directories; listing arrays in the root config is ignored and removed
 
 ## Configuration Structure
 

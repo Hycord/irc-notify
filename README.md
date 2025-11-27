@@ -101,6 +101,7 @@ See [Quick Start Guide](./docs/guides/quickstart.md) for detailed setup.
 - [Configuration Guide](./docs/guides/configuration.md)
 - [Textual IRC Client Setup](./docs/guides/clients/textual.md)
 - [The Lounge Client Setup](./docs/guides/clients/thelounge.md)
+- [HexChat Client Setup](./docs/guides/clients/hexchat.md)
 - [Host Metadata Overrides](./docs/guides/host-metadata.md)
 - [CLI Tools](./docs/guides/cli.md)
 
@@ -329,6 +330,7 @@ See [Architecture Overview](./docs/architecture/overview.md) for details.
 ### Currently Supported
 - **Textual** - Full support (reference implementation)
 - **TheLounge** - Full support
+- **HexChat** - Template config available; adjust patterns to your logs
 
 ### Adding New Clients
 No code required! Just create a config file with:

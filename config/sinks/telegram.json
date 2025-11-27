@@ -1,0 +1,53 @@
+{
+  "id": "telegram",
+  "type": "webhook",
+  "name": "Telegram Bot Webhook",
+  "enabled": false,
+  "config": {
+    "url": "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage",
+    "method": "POST"
+  },
+  "template": {
+    "chat_id": "${TELEGRAM_CHAT_ID}",
+    "parse_mode": "HTML",
+    "format": "json"
+  },
+  "payloadTransforms": [
+    {
+      "name": "telegram-html",
+      "priority": 100,
+      "bodyFormat": "json",
+      "contentType": "application/json",
+      "jsonTemplate": {
+        "chat_id": "{{chat_id}}",
+        "parse_mode": "{{parse_mode}}",
+        "text": "<b>{{title}}</b>\n\n{{body}}\n\n<i>Server: {{context.server.displayName}} | Channel: {{context.target.name}}</i>"
+      }
+    },
+    {
+      "name": "telegram-markdown",
+      "priority": 90,
+      "bodyFormat": "json",
+      "contentType": "application/json",
+      "condition": {
+        "field": "metadata.parse_mode",
+        "operator": "equals",
+        "value": "Markdown"
+      },
+      "jsonTemplate": {
+        "chat_id": "{{chat_id}}",
+        "parse_mode": "Markdown",
+        "text": "*{{title}}*\n\n{{body}}\n\n_Server: {{context.server.displayName}} | Channel: {{context.target.name}}_"
+      }
+    }
+  ],
+  "allowedMetadata": [
+    "chat_id",
+    "parse_mode",
+    "disable_web_page_preview",
+    "disable_notification"
+  ],
+  "metadata": {
+    "description": "Send notifications via Telegram bot API. Requires bot token and chat ID."
+  }
+}

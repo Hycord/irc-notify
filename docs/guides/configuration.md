@@ -4,7 +4,7 @@ This guide provides a comprehensive overview of the IRC Notify configuration sys
 
 ## Quick Start
 
-**Auto-Discovery Mode** (Recommended): Omit the config arrays to automatically discover all configs:
+Auto-Discovery is always enabled. The root config never lists component IDs; all configs are discovered from files:
 
 ```json
 {
@@ -16,23 +16,7 @@ This guide provides a comprehensive overview of the IRC Notify configuration sys
 }
 ```
 
-All JSON files in `config/clients/`, `config/servers/`, `config/events/`, and `config/sinks/` are automatically discovered.
-
-**Explicit Mode**: Optionally specify exactly which configs to load:
-
-```json
-{
-  "global": {
-    "defaultLogDirectory": "../logs",
-    "pollInterval": 1000,
-    "debug": false
-  },
-  "clients": ["textual", "thelounge"],
-  "servers": ["libera", "orpheus"],
-  "events": ["phrase-alert"],
-  "sinks": ["ntfy", "console"]
-}
-```
+All JSON files in `config/clients/`, `config/servers/`, `config/events/`, and `config/sinks/` are automatically discovered. Any `clients`, `servers`, `events`, or `sinks` arrays present in the root config are ignored and removed.
 
 **Enabled Field**: Every config has an `enabled` boolean field:
 - Configs with `enabled: false` are **loaded** but **not initialized**
@@ -74,21 +58,7 @@ Defines global settings. Individual configs are automatically discovered from th
 }
 ```
 
-**Optional**: You can explicitly list config IDs if you want to control which configs are loaded:
-
-```json
-{
-  "global": {
-    "pollInterval": 1000,
-    "debug": false,
-    "defaultLogDirectory": "./logs"
-  },
-  "clients": ["textual", "thelounge"],
-  "servers": ["libera", "oftc", "orpheus"],
-  "events": ["phrase-alert", "dm-alert"],
-  "sinks": ["console", "ntfy", "webhook"]
-}
-```
+Note: Explicit listing of component IDs is deprecated and no longer supported.
 
 ### Global Settings
 
@@ -100,16 +70,9 @@ Defines global settings. Individual configs are automatically discovered from th
 | `configDirectory` | string | No | "./config" | Directory containing config files |
 | `rescanLogsOnStartup` | boolean | No | false | Re-read all logs from beginning on startup |
 
-### Config Arrays
+### Discovery-Only
 
-Each array contains IDs referencing config files:
-
-- **`clients`** - References files in `config/clients/<id>.json`
-- **`servers`** - References files in `config/servers/<id>.json`
-- **`events`** - References files in `config/events/<id>.json`
-- **`sinks`** - References files in `config/sinks/<id>.json`
-
-**Important**: IDs must match the actual config file IDs. Cross-references are validated at load time.
+Component lists (`clients`, `servers`, `events`, `sinks`) are no longer part of the root config. The system always discovers component files from their directories and validates cross-references during load.
 
 ## Config File Resolution
 

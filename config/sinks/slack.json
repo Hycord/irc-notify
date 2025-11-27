@@ -1,0 +1,89 @@
+{
+  "id": "slack",
+  "type": "webhook",
+  "name": "Slack Webhook",
+  "enabled": false,
+  "config": {
+    "url": "${SLACK_WEBHOOK_URL}",
+    "method": "POST"
+  },
+  "template": {
+    "username": "IRC Notify",
+    "icon_emoji": ":robot_face:",
+    "format": "json"
+  },
+  "payloadTransforms": [
+    {
+      "name": "slack-rich",
+      "priority": 100,
+      "bodyFormat": "json",
+      "contentType": "application/json",
+      "jsonTemplate": {
+        "username": "{{username}}",
+        "icon_emoji": "{{icon_emoji}}",
+        "blocks": [
+          {
+            "type": "header",
+            "text": {
+              "type": "plain_text",
+              "text": "{{title}}"
+            }
+          },
+          {
+            "type": "section",
+            "text": {
+              "type": "mrkdwn",
+              "text": "{{body}}"
+            },
+            "fields": [
+              {
+                "type": "mrkdwn",
+                "text": "*Server:*\n{{context.server.displayName}}"
+              },
+              {
+                "type": "mrkdwn",
+                "text": "*Channel:*\n{{context.target.name}}"
+              },
+              {
+                "type": "mrkdwn",
+                "text": "*From:*\n{{context.sender.nickname}}"
+              }
+            ]
+          },
+          {
+            "type": "context",
+            "elements": [
+              {
+                "type": "mrkdwn",
+                "text": "<!date^{{context.timestamp}}^{date_short_pretty} at {time}|{{context.timestamp}}>"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "slack-simple",
+      "priority": 50,
+      "bodyFormat": "json",
+      "contentType": "application/json",
+      "jsonTemplate": {
+        "username": "{{username}}",
+        "icon_emoji": "{{icon_emoji}}",
+        "text": "*{{title}}*\n{{body}}"
+      }
+    }
+  ],
+  "allowedMetadata": [
+    "username",
+    "icon_emoji",
+    "icon_url",
+    "title",
+    "body",
+    "blocks",
+    "attachments"
+  ],
+  "metadata": {
+    "description": "Send notifications to Slack channels via webhook. Supports both rich blocks and simple text."
+  }
+}

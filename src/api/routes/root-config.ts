@@ -17,7 +17,12 @@ import { json } from "../utils";
  * Get root configuration
  */
 export const getRootConfigHandler: RouteHandler = (req, context) => {
-  const config = context.orchestrator.getConfig();
+  const config = { ...context.orchestrator.getConfig() } as any;
+  // Do not expose deprecated listing fields
+  delete config.clients;
+  delete config.servers;
+  delete config.events;
+  delete config.sinks;
   return json({ status: 200 }, config);
 };
 
@@ -59,6 +64,12 @@ export const updateRootConfigHandler: RouteHandler = async (req, context) => {
     if (!config.global) {
       return json({ status: 400 }, { error: "Missing 'global' section in config" });
     }
+
+    // Strip deprecated listing fields before persisting
+    delete (config as any).clients;
+    delete (config as any).servers;
+    delete (config as any).events;
+    delete (config as any).sinks;
 
     // Write as JSON
     const configDir = context.orchestrator.getConfigDirectory();

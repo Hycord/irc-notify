@@ -12,6 +12,7 @@ export class GenericClientAdapter implements ClientAdapter {
   protected debug: boolean;
   private fileHostnameCache: Map<string, string> = new Map(); // filePath -> hostname
   private discoveredServers: Array<{ hostname: string; metadata?: Record<string, any> }> = [];
+  private directoryHostnameMap: Map<string, string> = new Map(); // serverDirName -> hostname
 
   constructor(config: ClientConfig, debug: boolean = false) {
     this.config = config;
@@ -31,6 +32,15 @@ export class GenericClientAdapter implements ClientAdapter {
 
     // Discover and cache servers for later hostname resolution
     this.discoveredServers = await this.discoverServers();
+    // Build directoryHostnameMap by pairing server.log parent dir with discovered hostname
+    for (const server of this.discoveredServers) {
+      if (server.metadata?.discoveredFrom) {
+        const dirName = path.basename(path.dirname(server.metadata.discoveredFrom));
+        if (server.hostname && dirName) {
+          this.directoryHostnameMap.set(dirName, server.hostname);
+        }
+      }
+    }
     if (this.debug && this.discoveredServers.length > 0) {
       this.log(
         `Discovered ${this.discoveredServers.length} server(s):`,
@@ -127,6 +137,7 @@ export class GenericClientAdapter implements ClientAdapter {
 
     return servers;
   }
+
 
   parseLine(line: string, context: Partial<MessageContext>): MessageContext | null {
     // Skip empty lines
@@ -314,6 +325,18 @@ export class GenericClientAdapter implements ClientAdapter {
       context.metadata!.serverHostname = hostname;
       if (this.debug) {
         this.log(`Server hostname: ${hostname}`);
+      }
+    }
+
+    // If hostname still not resolved but we have a serverIdentifier, use directoryHostnameMap
+    if (!context.metadata!.serverHostname && context.metadata!.serverIdentifier) {
+      const dirName = context.metadata!.serverIdentifier;
+      const mapped = this.directoryHostnameMap.get(dirName);
+      if (mapped) {
+        context.metadata!.serverHostname = mapped;
+        if (this.debug) {
+          this.log(`Resolved hostname from directoryHostnameMap: ${mapped}`);
+        }
       }
     }
 

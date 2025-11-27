@@ -1,0 +1,72 @@
+{
+  "id": "webhook-generic",
+  "type": "webhook",
+  "name": "Generic JSON Webhook",
+  "enabled": false,
+  "config": {
+    "url": "${WEBHOOK_URL}",
+    "method": "POST"
+  },
+  "template": {
+    "format": "json"
+  },
+  "payloadTransforms": [
+    {
+      "name": "generic-full",
+      "priority": 100,
+      "bodyFormat": "json",
+      "contentType": "application/json",
+      "jsonTemplate": {
+        "title": "{{title}}",
+        "body": "{{body}}",
+        "timestamp": "{{context.timestamp}}",
+        "event": {
+          "id": "{{event.id}}",
+          "name": "{{event.name}}",
+          "type": "{{event.baseEvent}}"
+        },
+        "server": {
+          "id": "{{context.server.id}}",
+          "name": "{{context.server.displayName}}",
+          "hostname": "{{context.server.hostname}}"
+        },
+        "channel": {
+          "name": "{{context.target.name}}",
+          "type": "{{context.target.type}}"
+        },
+        "sender": {
+          "nickname": "{{context.sender.nickname}}",
+          "username": "{{context.sender.username}}",
+          "hostname": "{{context.sender.hostname}}"
+        },
+        "message": {
+          "content": "{{context.message.content}}",
+          "type": "{{context.message.type}}"
+        }
+      }
+    },
+    {
+      "name": "generic-simple",
+      "priority": 50,
+      "bodyFormat": "json",
+      "contentType": "application/json",
+      "jsonTemplate": {
+        "title": "{{title}}",
+        "message": "{{body}}",
+        "server": "{{context.server.displayName}}",
+        "channel": "{{context.target.name}}",
+        "from": "{{context.sender.nickname}}",
+        "timestamp": "{{context.timestamp}}"
+      }
+    }
+  ],
+  "allowedMetadata": [
+    "title",
+    "body",
+    "headers",
+    "fields"
+  ],
+  "metadata": {
+    "description": "Generic webhook with full context data. Use as template for custom integrations."
+  }
+}

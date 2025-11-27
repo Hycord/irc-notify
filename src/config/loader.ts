@@ -93,6 +93,13 @@ export class ConfigLoader {
     // Apply environment variable substitution
     config = EnvSubstitution.substituteObject(config);
 
+    // Strip deprecated listing fields (always auto-discover)
+    for (const key of ["clients", "servers", "events", "sinks"] as const) {
+      if ((config as any)[key] !== undefined) {
+        delete (config as any)[key];
+      }
+    }
+
     // Apply defaults
     config = this.applyDefaults(config);
 
@@ -108,10 +115,11 @@ export class ConfigLoader {
     // 3. Servers (no dependencies, but needed by events)
     // 4. Events (depend on servers and sinks)
     // Note: All configs are JSON files
-    const clients = await this.loadClients(config.clients || [], configDir);
-    const sinks = await this.loadSinks(config.sinks || [], configDir);
-    const servers = await this.loadServers(config.servers || [], configDir);
-    const events = await this.loadEvents(config.events || [], configDir);
+    // Always use discovery; ignore any root listing fields
+    const clients = await this.loadClients([], configDir);
+    const sinks = await this.loadSinks([], configDir);
+    const servers = await this.loadServers([], configDir);
+    const events = await this.loadEvents([], configDir);
 
     // Validate configurations
 
@@ -400,11 +408,6 @@ export class ConfigLoader {
     config.global.debug = config.global.debug !== undefined ? config.global.debug : false;
     config.global.defaultLogDirectory = config.global.defaultLogDirectory || "/logs";
     config.global.configDirectory = config.global.configDirectory || "./config";
-
-    config.clients = config.clients || [];
-    config.servers = config.servers || [];
-    config.events = config.events || [];
-    config.sinks = config.sinks || [];
 
     return config;
   }

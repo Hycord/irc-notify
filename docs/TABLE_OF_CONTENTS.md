@@ -23,6 +23,7 @@ Complete index of all IRC Notify documentation.
 ### Client Setup Guides
 - [Textual IRC Client](./guides/clients/textual.md) - Configure monitoring for Textual
 - [The Lounge Client](./guides/clients/thelounge.md) - Configure monitoring for The Lounge
+- [HexChat Client](./guides/clients/hexchat.md) - Configure monitoring for HexChat
 
 ### Advanced Features
 - [Webhook Payload Transforms](./guides/webhook-transforms.md) - Config-driven webhook customization
@@ -102,7 +103,7 @@ Complete index of all IRC Notify documentation.
 **System Administrators**
 1. [Installation](./guides/installation.md)
 2. [Configuration](./guides/configuration.md)
-3. [Config API](./api/config-api.md)
+3. [Config API](./api-server/config-api.md)
 4. [CLI Reference](./guides/cli.md)
 
 ## 📄 Document Status
