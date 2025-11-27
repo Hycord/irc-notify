@@ -138,7 +138,6 @@ export class GenericClientAdapter implements ClientAdapter {
     return servers;
   }
 
-
   parseLine(line: string, context: Partial<MessageContext>): MessageContext | null {
     // Skip empty lines
     if (!line.trim()) {
