@@ -11,8 +11,7 @@ Welcome to the IRC Notify documentation. This system monitors IRC client log fil
 - [Releases & Versioning](./guides/releases.md)
 
 ### Configuration Guides
-- [TypeScript Configuration System](./guides/typescript-config.md)
-- [Strict Types & Autocomplete](./guides/strict-types.md)
+- [Filter & Template System](./guides/filters.md)
 
 ### Advanced Topics
 - [Host Metadata Overrides](./guides/host-metadata.md)
@@ -25,9 +24,16 @@ Welcome to the IRC Notify documentation. This system monitors IRC client log fil
 - [Type System](./architecture/type-system.md)
 
 ### API Reference
-- [ConfigIO](./api/config-io.md)
-- [Config API](./api/config-api.md)
-- [FilterEngine](./api/filter-engine.md)
+
+#### API Server (HTTP)
+- [Config API](./api-server/config-api.md)
+- [Root Config API](./api-server/root-config.md) - Manage root configuration
+- [Data Flow API](./api-server/data-flow.md) - Data flow visualization
+
+#### Core APIs (Internal)
+- [ConfigIO](./core-apis/config-io.md) - Import/export utilities
+- [FilterEngine](./core-apis/filter-engine.md) - Filter evaluation
+- [TemplateEngine](./core-apis/template-engine.md) - Template processing
 
 ### CLI Reference
 - [Command Line Interface](./guides/cli.md)
@@ -36,8 +42,8 @@ Welcome to the IRC Notify documentation. This system monitors IRC client log fil
 
 ```
 irc-notify/
-├── config/                    # Configuration files (TypeScript)
-│   ├── config.ts              # Main config (lists IDs)
+├── config/                    # Configuration files (JSON)
+│   ├── config.json            # Main config (optional - auto-discovers)
 │   ├── clients/               # Client adapters
 │   ├── servers/               # Server metadata
 │   ├── events/                # Event rules
@@ -60,7 +66,7 @@ irc-notify/
 ## Key Concepts
 
 ### Configuration-Driven Architecture
-Everything is configured via TypeScript files - no hardcoded business logic. The system uses `define*()` helper functions for validation and type safety.
+Everything is configured via JSON files - no hardcoded business logic. Configuration files are automatically discovered from their directories.
 
 ### Message Pipeline
 ```
@@ -84,7 +90,7 @@ The central data structure that flows through the entire system, carrying:
 
 - **Runtime**: Bun (JavaScript runtime)
 - **Language**: TypeScript
-- **Config Format**: TypeScript (with JSON fallback)
+- **Config Format**: JSON with auto-discovery
 - **File Monitoring**: Node.js fs module with polling
 - **Pattern Matching**: Regular expressions + filter engine
 - **Template Engine**: Custom `{{field.path}}` syntax

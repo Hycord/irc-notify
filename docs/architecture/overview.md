@@ -6,11 +6,11 @@ This document describes the high-level architecture of IRC Notify.
 
 IRC Notify follows these core principles:
 
-1. **Configuration-Driven**: All behavior defined in config files, no hardcoded logic
-2. **Type-Safe**: TypeScript types validate configs at load time
+1. **Configuration-Driven**: All behavior defined in JSON config files, no hardcoded logic
+2. **Auto-Discovery**: Configs automatically discovered from directories
 3. **Pipeline-Based**: Clear data flow through distinct stages
 4. **Extensible**: Plugin-style architecture for clients and sinks
-5. **Zero-Code Adapters**: New IRC clients require only config files
+5. **Zero-Code Adapters**: New IRC clients require only JSON config files
 
 ## System Components
 
@@ -81,7 +81,7 @@ IRC Notify follows these core principles:
 #### **ConfigLoader** (`src/config/loader.ts`)
 - **Role**: Configuration loading and validation
 - **Responsibilities**:
-  - Discover config files (TypeScript or JSON)
+  - Auto-discover JSON config files in directories
   - Load configs in dependency order
   - Apply environment variable substitution
   - Validate individual configs and cross-references
@@ -202,26 +202,16 @@ interface MessageContext {
 }
 ```
 
-## Configuration Registry
+## Configuration Validation
 
-TypeScript configs auto-register during module load:
-
-```typescript
-// config/servers/libera.ts
-export default defineServer({
-  id: "libera",
-  // ... config
-}); // ← Automatically calls ConfigRegistry.registerServer()
-```
-
-**Registration Order** (enforced by loader):
+**Configuration Loading Order** (enforced by loader):
 1. Clients (no dependencies)
 2. Sinks (no dependencies, needed by events)
 3. Servers (no dependencies, needed by events)
 4. Events (depend on servers and sinks)
 
 **Validation Points**:
-- During registration: Sink metadata keys validated
+- During load: JSON schema validation, required fields
 - After all loaded: Cross-reference validation (IDs exist)
 - At runtime: Template variables, filter operators
 
@@ -309,16 +299,17 @@ export default defineServer({
 - Templates access rich metadata
 - Filters can use server/user fields
 
-### Why TypeScript Configs?
+### Why JSON Configs?
 
-**Problem**: JSON lacks validation and autocomplete
-**Solution**: TypeScript with validation helpers
+**Problem**: Configuration needs to be portable and simple
+**Solution**: JSON with comprehensive runtime validation
 
 **Benefits**:
-- Compile-time validation (catch errors early)
-- Autocomplete for sink metadata (via defineStrictEvent)
-- Environment variables without runtime parsing
-- ConfigRegistry validates during import
+- Simple, portable format
+- No build step required
+- Editable without TypeScript knowledge
+- Comprehensive runtime validation
+- Environment variable support via ${VAR} syntax
 
 ### Why Priority-Based Matching?
 

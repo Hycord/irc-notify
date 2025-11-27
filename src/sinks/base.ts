@@ -63,6 +63,7 @@ export abstract class BaseSink implements Sink {
         id: event.id,
         name: event.name,
         baseEvent: event.baseEvent,
+        group: event.group,
       },
     };
 
@@ -138,10 +139,10 @@ export abstract class BaseSink implements Sink {
    * Looks in metadata.sink.{sinkId}.{key}
    *
    * @param event - Event configuration
-   * @param key - Metadata key within the sink-specific metadata
+   * @param key - Metadata key within the sink-specific metadata (optional, returns all if not provided)
    * @returns The metadata value or undefined
    */
-  protected getSinkMetadata(event: EventConfig, key: string): any {
+  protected getSinkMetadata(event: EventConfig, key?: string): any {
     if (!event.metadata?.sink) {
       return undefined;
     }
@@ -149,6 +150,11 @@ export abstract class BaseSink implements Sink {
     const sinkMetadata = event.metadata.sink[this.config.id];
     if (!sinkMetadata || typeof sinkMetadata !== "object") {
       return undefined;
+    }
+
+    // If no key provided, return entire sink metadata
+    if (!key) {
+      return sinkMetadata;
     }
 
     // Support dot notation for nested access

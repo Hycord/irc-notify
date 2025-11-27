@@ -10,6 +10,8 @@ import { EnvSubstitution } from "../utils/env";
 export class GenericClientAdapter implements ClientAdapter {
   protected config: ClientConfig;
   protected debug: boolean;
+  private fileHostnameCache: Map<string, string> = new Map(); // filePath -> hostname
+  private discoveredServers: Array<{ hostname: string; metadata?: Record<string, any> }> = [];
 
   constructor(config: ClientConfig, debug: boolean = false) {
     this.config = config;
@@ -25,6 +27,15 @@ export class GenericClientAdapter implements ClientAdapter {
     // Validate log directory exists
     if (!fs.existsSync(this.config.logDirectory)) {
       throw new Error(`Log directory does not exist: ${this.config.logDirectory}`);
+    }
+
+    // Discover and cache servers for later hostname resolution
+    this.discoveredServers = await this.discoverServers();
+    if (this.debug && this.discoveredServers.length > 0) {
+      this.log(
+        `Discovered ${this.discoveredServers.length} server(s):`,
+        this.discoveredServers.map((s) => `${s.hostname} (UUID: ${s.metadata?.uuid || "none"})`),
+      );
     }
   }
 
@@ -71,13 +82,39 @@ export class GenericClientAdapter implements ClientAdapter {
         if (fs.existsSync(jsonPath)) {
           const data = JSON.parse(fs.readFileSync(jsonPath, "utf-8"));
 
-          // Handle arrays or objects
-          const items = Array.isArray(data) ? data : [data];
+          // If arrayPath is specified, extract the array from nested structure
+          let items: any[];
+          if (discovery.arrayPath) {
+            const extracted = this.getNestedValue(data, discovery.arrayPath);
+            items = Array.isArray(extracted) ? extracted : [extracted];
+          } else {
+            // Handle arrays or objects at top level
+            items = Array.isArray(data) ? data : [data];
+          }
 
           for (const item of items) {
             const hostname = this.getNestedValue(item, discovery.hostnameField || "hostname");
             if (hostname) {
-              servers.push({ hostname, metadata: item });
+              // Extract additional metadata fields if configured
+              const metadata: Record<string, any> = { ...item };
+
+              // Store UUID if configured (for path matching)
+              if (discovery.uuidField) {
+                const uuid = this.getNestedValue(item, discovery.uuidField);
+                if (uuid) {
+                  metadata.uuid = uuid;
+                }
+              }
+
+              // Store network name if configured
+              if (discovery.nameField) {
+                const name = this.getNestedValue(item, discovery.nameField);
+                if (name) {
+                  metadata.name = name;
+                }
+              }
+
+              servers.push({ hostname, metadata });
             }
           }
         }
@@ -221,7 +258,7 @@ export class GenericClientAdapter implements ClientAdapter {
     const context: Partial<MessageContext> = {
       client: {
         id: this.config.id,
-        type: this.config.type,
+        type: this.config.id,
         name: this.config.name,
         metadata: this.config.metadata || {},
       },
@@ -244,6 +281,74 @@ export class GenericClientAdapter implements ClientAdapter {
         context.metadata!.serverIdentifier = match[extraction.serverGroup];
         if (this.debug) {
           this.log(`Server identifier extracted: ${context.metadata!.serverIdentifier}`);
+        }
+      }
+    }
+
+    // Extract hostname from file if available in cache, or discover it
+    let hostname = this.fileHostnameCache.get(filePath);
+    if (!hostname && this.config.serverDiscovery?.type === "filesystem") {
+      // Try to discover hostname from file content
+      const discovery = this.config.serverDiscovery;
+      if (discovery.hostnamePattern && fs.existsSync(filePath)) {
+        try {
+          const content = fs.readFileSync(filePath, "utf-8");
+          const regex = new RegExp(discovery.hostnamePattern);
+          const match = content.match(regex);
+          if (match && discovery.hostnameGroup !== undefined) {
+            hostname = match[discovery.hostnameGroup];
+            this.fileHostnameCache.set(filePath, hostname);
+            if (this.debug) {
+              this.log(`Discovered hostname from file ${filePath}: ${hostname}`);
+            }
+          }
+        } catch (error) {
+          if (this.debug) {
+            this.log(`Failed to read file for hostname discovery: ${filePath}`, error);
+          }
+        }
+      }
+    }
+
+    if (hostname) {
+      context.metadata!.serverHostname = hostname;
+      if (this.debug) {
+        this.log(`Server hostname: ${hostname}`);
+      }
+    }
+
+    // For JSON/SQLite discovery (e.g., TheLounge), match serverIdentifier to discovered servers
+    if (!hostname && context.metadata!.serverIdentifier && this.discoveredServers.length > 0) {
+      const identifier = context.metadata!.serverIdentifier;
+
+      // Try to match by UUID (full or partial)
+      for (const server of this.discoveredServers) {
+        if (server.metadata?.uuid) {
+          const uuid = server.metadata.uuid.toString();
+
+          // Check for full UUID match
+          if (identifier.includes(uuid)) {
+            context.metadata!.serverHostname = server.hostname;
+            if (this.debug) {
+              this.log(`Matched server by full UUID: ${server.hostname}`);
+            }
+            break;
+          }
+
+          // Check for partial UUID match (e.g., TheLounge uses last 3 segments)
+          // UUID format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+          // TheLounge dirs: hostname-x-xxxx-xxxx-xxxxxxxxxxxx (last 3 segments)
+          const uuidSegments = uuid.split("-");
+          if (uuidSegments.length === 5) {
+            const partialUuid = uuidSegments.slice(2).join("-"); // Last 3 segments
+            if (identifier.includes(partialUuid)) {
+              context.metadata!.serverHostname = server.hostname;
+              if (this.debug) {
+                this.log(`Matched server by partial UUID: ${server.hostname}`);
+              }
+              break;
+            }
+          }
         }
       }
     }
@@ -293,9 +398,16 @@ export class GenericClientAdapter implements ClientAdapter {
     // Default: no cleanup needed
   }
 
+  /**
+   * Get the list of servers discovered by this client
+   */
+  getDiscoveredServers(): Array<{ hostname: string; metadata?: Record<string, any> }> {
+    return this.discoveredServers;
+  }
+
   protected log(...args: any[]): void {
     if (this.debug) {
-      console.log(`[${this.config.type}:${this.config.id}]`, ...args);
+      console.log(`[${this.config.id}]`, ...args);
     }
   }
 

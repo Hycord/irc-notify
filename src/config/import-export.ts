@@ -1,5 +1,6 @@
 import * as fs from "fs";
 import * as path from "path";
+import { Readable } from "stream";
 import { createGunzip, createGzip } from "zlib";
 import { pipeline } from "stream/promises";
 import { ClientConfig, EventConfig, IRCNotifyConfig, ServerConfig, SinkConfig } from "../types";
@@ -34,6 +35,8 @@ export interface ImportOptions {
   targetDir?: string;
   /** Whether to overwrite existing files */
   overwrite?: boolean;
+  /** If true, wipe existing config set before importing */
+  replace?: boolean;
   /** Whether to automatically adjust configDirectory path in main config */
   adjustConfigPath?: boolean;
   /** Whether to reload configuration after import */
@@ -82,10 +85,8 @@ export class ConfigIO {
    */
   static async findConfigFile(): Promise<string> {
     const candidates = [
-      "config/config.ts", // Primary location
-      "config/config.json",
-      "config.ts", // Legacy root location
-      "config.json",
+      "config/config.json", // Primary location
+      "config.json", // Legacy root location
       "config.dev.json",
     ];
 
@@ -95,8 +96,108 @@ export class ConfigIO {
       }
     }
 
-    // Note: ConfigLoader.findConfigFile() handles the config.default.ts fallback
+    // Note: ConfigLoader.findConfigFile() handles the config.default.json fallback
     throw new Error("No configuration file found. Looked for: " + candidates.join(", "));
+  }
+
+  /**
+   * Check and rename config files if their ID doesn't match the filename
+   * Also removes duplicate files with the same ID
+   * @param configDir - The base config directory
+   */
+  static async validateAndRenameConfigFiles(configDir: string): Promise<void> {
+    const categories = ["clients", "servers", "events", "sinks"];
+    let renamed = 0;
+    let deleted = 0;
+
+    for (const category of categories) {
+      const categoryDir = path.join(configDir, category);
+
+      if (!fs.existsSync(categoryDir)) {
+        continue;
+      }
+
+      const files = fs.readdirSync(categoryDir).filter((f) => f.endsWith(".json"));
+      const seenIds = new Map<string, string>(); // id -> filename
+
+      for (const file of files) {
+        const filePath = path.join(categoryDir, file);
+        const expectedFilename = path.basename(file, ".json");
+
+        try {
+          const content = fs.readFileSync(filePath, "utf-8");
+          const config = JSON.parse(content);
+
+          if (!config.id) {
+            continue;
+          }
+
+          // Check if we've already seen this ID
+          const existingFile = seenIds.get(config.id);
+          if (existingFile) {
+            // Duplicate ID found - delete this file if it's not the correctly named one
+            if (expectedFilename !== config.id) {
+              fs.unlinkSync(filePath);
+              console.log(
+                `  🗑️  Deleted duplicate ${category}/${file} (ID already exists in ${existingFile})`,
+              );
+              deleted++;
+              continue;
+            } else {
+              // This file has the correct name, delete the other one
+              const existingPath = path.join(categoryDir, existingFile);
+              fs.unlinkSync(existingPath);
+              console.log(
+                `  🗑️  Deleted duplicate ${category}/${existingFile} (keeping correctly named ${file})`,
+              );
+              deleted++;
+              seenIds.set(config.id, file);
+              continue;
+            }
+          }
+
+          // Check if ID exists and doesn't match filename
+          if (config.id !== expectedFilename) {
+            const newFilePath = path.join(categoryDir, `${config.id}.json`);
+
+            // Check if target file already exists
+            if (fs.existsSync(newFilePath)) {
+              // Read the existing file to compare
+              const existingContent = fs.readFileSync(newFilePath, "utf-8");
+              const existingConfig = JSON.parse(existingContent);
+
+              if (existingConfig.id === config.id) {
+                // Delete the old incorrectly named file
+                fs.unlinkSync(filePath);
+                console.log(
+                  `  🗑️  Deleted ${category}/${file} (correctly named version exists as ${config.id}.json)`,
+                );
+                deleted++;
+                seenIds.set(config.id, `${config.id}.json`);
+                continue;
+              }
+            }
+
+            // Rename the file (this automatically deletes the old file)
+            fs.renameSync(filePath, newFilePath);
+            console.log(`  ✓ Renamed ${category}/${file} → ${config.id}.json`);
+            renamed++;
+            seenIds.set(config.id, `${config.id}.json`);
+          } else {
+            seenIds.set(config.id, file);
+          }
+        } catch (error) {
+          console.error(`Failed to validate config ${filePath}:`, error);
+        }
+      }
+    }
+
+    if (renamed > 0 || deleted > 0) {
+      const actions = [];
+      if (renamed > 0) actions.push(`renamed ${renamed}`);
+      if (deleted > 0) actions.push(`deleted ${deleted} duplicate(s)`);
+      console.log(`\n✓ Config file cleanup: ${actions.join(", ")}`);
+    }
   }
 
   /**
@@ -121,7 +222,7 @@ export class ConfigIO {
 
     for (const file of files) {
       // Skip non-config files and sensitive files
-      if (!file.endsWith(".ts") && !file.endsWith(".json")) {
+      if (!file.endsWith(".json")) {
         continue;
       }
       // Never export auth token file
@@ -132,20 +233,8 @@ export class ConfigIO {
       const filePath = path.join(categoryDir, file);
 
       try {
-        let config: T;
-
-        if (file.endsWith(".ts")) {
-          // Ensure globals are loaded before importing TS configs
-          await ConfigLoader.ensureGlobalHelpers();
-
-          const absolutePath = path.resolve(filePath);
-          const fileUrl = `file://${absolutePath}`;
-          const module = await import(fileUrl);
-          config = module.default;
-        } else {
-          const content = fs.readFileSync(filePath, "utf-8");
-          config = JSON.parse(content);
-        }
+        const content = fs.readFileSync(filePath, "utf-8");
+        const config: T = JSON.parse(content);
 
         // Set ID from filename if not present
         if (!config.id) {
@@ -165,7 +254,7 @@ export class ConfigIO {
 
   /**
    * Export all configuration to a bundled JSON file (optionally compressed)
-   * Exports ALL configs found in directories, excluding only those with enabled: false
+   * Exports ALL configs found in directories, including disabled ones
    *
    * @param outputPath - Path for the output file (supports .json.gz or .json)
    * @param configPath - Optional path to main config file
@@ -184,15 +273,8 @@ export class ConfigIO {
 
     let mainConfig: IRCNotifyConfig;
 
-    if (configPath.endsWith(".ts")) {
-      await ConfigLoader.ensureGlobalHelpers();
-      const fileUrl = `file://${absoluteConfigPath}`;
-      const module = await import(fileUrl);
-      mainConfig = module.default;
-    } else {
-      const content = fs.readFileSync(absoluteConfigPath, "utf-8");
-      mainConfig = JSON.parse(content);
-    }
+    const content = fs.readFileSync(absoluteConfigPath, "utf-8");
+    mainConfig = JSON.parse(content);
 
     // Determine the actual config directory
     const actualConfigDir = mainConfig.global?.configDirectory
@@ -201,6 +283,10 @@ export class ConfigIO {
         : path.resolve(configDir, mainConfig.global.configDirectory)
       : configDir;
 
+    // Validate and rename config files before export
+    console.log("Validating config file names...");
+    await this.validateAndRenameConfigFiles(actualConfigDir);
+
     // Discover ALL configs in each category
     console.log("Discovering all configuration files...");
     const allClients = await this.discoverAllConfigs<ClientConfig>("clients", actualConfigDir);
@@ -208,33 +294,25 @@ export class ConfigIO {
     const allEvents = await this.discoverAllConfigs<EventConfig>("events", actualConfigDir);
     const allSinks = await this.discoverAllConfigs<SinkConfig>("sinks", actualConfigDir);
 
-    // Filter out ONLY configs with enabled: false
-    const enabledClients = allClients.filter((c) => c.enabled !== false);
-    const enabledServers = allServers.filter((s) => s.enabled !== false);
-    const enabledEvents = allEvents.filter((e) => e.enabled !== false);
-    const enabledSinks = allSinks.filter((s) => s.enabled !== false);
+    // Count disabled configs for reporting
+    const disabledClients = allClients.filter((c) => c.enabled === false).length;
+    const disabledServers = allServers.filter((s) => s.enabled === false).length;
+    const disabledEvents = allEvents.filter((e) => e.enabled === false).length;
+    const disabledSinks = allSinks.filter((s) => s.enabled === false).length;
 
     console.log(`Found configs:`);
-    console.log(
-      `  - Clients: ${enabledClients.length} of ${allClients.length} (${allClients.length - enabledClients.length} disabled)`,
-    );
-    console.log(
-      `  - Servers: ${enabledServers.length} of ${allServers.length} (${allServers.length - enabledServers.length} disabled)`,
-    );
-    console.log(
-      `  - Events: ${enabledEvents.length} of ${allEvents.length} (${allEvents.length - enabledEvents.length} disabled)`,
-    );
-    console.log(
-      `  - Sinks: ${enabledSinks.length} of ${allSinks.length} (${allSinks.length - enabledSinks.length} disabled)`,
-    );
+    console.log(`  - Clients: ${allClients.length} total (${disabledClients} disabled)`);
+    console.log(`  - Servers: ${allServers.length} total (${disabledServers} disabled)`);
+    console.log(`  - Events: ${allEvents.length} total (${disabledEvents} disabled)`);
+    console.log(`  - Sinks: ${allSinks.length} total (${disabledSinks} disabled)`);
 
-    // Update main config to reference all enabled configs
+    // Update main config to reference all configs (including disabled)
     const exportConfig: IRCNotifyConfig = {
       ...mainConfig,
-      clients: enabledClients.map((c) => c.id),
-      servers: enabledServers.map((s) => s.id),
-      events: enabledEvents.map((e) => e.id),
-      sinks: enabledSinks.map((s) => s.id),
+      clients: allClients.map((c) => c.id),
+      servers: allServers.map((s) => s.id),
+      events: allEvents.map((e) => e.id),
+      sinks: allSinks.map((s) => s.id),
     };
 
     // Create export bundle
@@ -245,13 +323,13 @@ export class ConfigIO {
         sourceConfigPath: absoluteConfigPath,
         sourceConfigDir: actualConfigDir,
         unpackConfigDir: "./config",
-        unpackConfigPath: "./config.ts",
+        unpackConfigPath: "./config.json",
       },
       config: exportConfig,
-      clients: enabledClients,
-      servers: enabledServers,
-      events: enabledEvents,
-      sinks: enabledSinks,
+      clients: allClients,
+      servers: allServers,
+      events: allEvents,
+      sinks: allSinks,
     };
 
     // Write to file
@@ -259,17 +337,11 @@ export class ConfigIO {
 
     if (outputPath.endsWith(".gz")) {
       // Write compressed
-      const readStream = Buffer.from(jsonContent);
+      const readStream = Readable.from(Buffer.from(jsonContent));
       const writeStream = fs.createWriteStream(outputPath);
       const gzipStream = createGzip();
 
-      await pipeline(
-        async function* () {
-          yield readStream;
-        },
-        gzipStream,
-        writeStream,
-      );
+      await pipeline(readStream, gzipStream, writeStream);
 
       console.log(`✓ Exported configuration to ${outputPath} (compressed)`);
     } else {
@@ -293,15 +365,8 @@ export class ConfigIO {
       // Load main config to check for configDirectory setting
       let mainConfig: IRCNotifyConfig;
 
-      if (configPath.endsWith(".ts")) {
-        await ConfigLoader.ensureGlobalHelpers();
-        const fileUrl = `file://${absoluteConfigPath}`;
-        const module = await import(fileUrl);
-        mainConfig = module.default;
-      } else {
-        const content = fs.readFileSync(absoluteConfigPath, "utf-8");
-        mainConfig = JSON.parse(content);
-      }
+      const content = fs.readFileSync(absoluteConfigPath, "utf-8");
+      mainConfig = JSON.parse(content);
 
       // Get the config directory
       const configDir = path.dirname(absoluteConfigPath);
@@ -325,6 +390,7 @@ export class ConfigIO {
       inputPath,
       targetDir: providedTargetDir,
       overwrite = false,
+      replace = false,
       adjustConfigPath = true,
       reloadConfig = false,
     } = options;
@@ -372,39 +438,13 @@ export class ConfigIO {
       }
     }
 
-    // If adjustConfigPath is enabled and we have an existing config, update the backup's configDirectory
+    // Always set configDirectory to '.' to prevent nested config/config
     let mainConfig = { ...exportData.config };
-    if (adjustConfigPath) {
-      const existingConfigDir = await this.detectTargetConfigDir();
-      if (existingConfigDir) {
-        // Adjust the configDirectory in the imported config to match existing
-        if (!mainConfig.global) {
-          mainConfig.global = {};
-        }
-        mainConfig.global.configDirectory =
-          path.relative(path.dirname(targetDir), targetDir) || "./config";
-        console.log(`  Adjusted configDirectory to: ${mainConfig.global.configDirectory}`);
-      } else {
-        // No existing config - determine based on where we're importing to
-        if (!mainConfig.global) {
-          mainConfig.global = {};
-        }
-        // If importing to config/ directory, the main config will be inside it
-        // So configDirectory should be "." (current directory relative to config.json location)
-        const normalizedTarget = path.normalize(targetDir);
-        if (
-          normalizedTarget === "config" ||
-          normalizedTarget === "./config" ||
-          path.basename(normalizedTarget) === "config"
-        ) {
-          mainConfig.global.configDirectory = ".";
-          console.log(`  Set configDirectory to: . (config.json is inside config/ directory)`);
-        } else {
-          mainConfig.global.configDirectory = targetDir;
-          console.log(`  Set configDirectory to: ${targetDir}`);
-        }
-      }
+    if (!mainConfig.global) {
+      mainConfig.global = {};
     }
+    mainConfig.global.configDirectory = ".";
+    console.log(`  Forced configDirectory to: . (config.json is inside config/ directory)`);
 
     // Create target directories
     const categories = ["clients", "servers", "events", "sinks"];
@@ -412,6 +452,38 @@ export class ConfigIO {
       const categoryDir = path.join(targetDir, category);
       if (!fs.existsSync(categoryDir)) {
         fs.mkdirSync(categoryDir, { recursive: true });
+      }
+    }
+
+    // If replace mode, wipe existing JSON config files before import
+    if (replace) {
+      console.log("\n🧹 Replace mode: wiping existing configuration files...");
+      // Remove category JSON files (but keep non-JSON files like auth_token.txt)
+      for (const category of categories) {
+        const categoryDir = path.join(targetDir, category);
+        if (fs.existsSync(categoryDir)) {
+          for (const file of fs.readdirSync(categoryDir)) {
+            if (file.endsWith(".json")) {
+              const filePath = path.join(categoryDir, file);
+              try {
+                fs.unlinkSync(filePath);
+                console.log(`  🗑️  Deleted ${category}/${file}`);
+              } catch (err) {
+                console.warn(`  ⚠️ Failed to delete ${category}/${file}:`, err);
+              }
+            }
+          }
+        }
+      }
+      // Remove main config.json in targetDir if present
+      const existingMain = path.join(targetDir, "config.json");
+      if (fs.existsSync(existingMain)) {
+        try {
+          fs.unlinkSync(existingMain);
+          console.log("  🗑️  Deleted config.json");
+        } catch (err) {
+          console.warn("  ⚠️ Failed to delete config.json:", err);
+        }
       }
     }
 
@@ -454,21 +526,15 @@ export class ConfigIO {
       imported++;
     }
 
-    // If the imported config is in config/config.json and there's a root config.ts, remove it
+    // If the imported config is in config/config.json and there's a root config.json, remove it
     if (
       targetDir === "./config" ||
       targetDir === "config" ||
       path.basename(targetDir) === "config"
     ) {
-      const rootConfigTs = path.join(process.cwd(), "config.ts");
       const rootConfigJson = path.join(process.cwd(), "config.json");
 
-      if (fs.existsSync(rootConfigTs)) {
-        console.log(`  🗑️  Removing root config.ts (using config/config.json instead)`);
-        fs.unlinkSync(rootConfigTs);
-      }
-
-      // Also remove root config.json if it exists and we're importing to config/
+      // Remove root config.json if it exists and we're importing to config/
       if (fs.existsSync(rootConfigJson) && mainConfigPath !== rootConfigJson) {
         console.log(`  🗑️  Removing root config.json (using config/config.json instead)`);
         fs.unlinkSync(rootConfigJson);
@@ -477,18 +543,9 @@ export class ConfigIO {
 
     console.log(`\n✓ Import complete: ${imported} files written, ${skipped} skipped`);
 
-    // Auto-migrate JSON configs to TypeScript after import
-    console.log("\n🔄 Auto-migrating JSON configs to TypeScript...");
-    try {
-      const { migrateToTypeScript } = await import("./migrate");
-      const migrateResult = await migrateToTypeScript({ configDir: targetDir });
-
-      if (migrateResult.converted > 0) {
-        console.log(`✓ Migrated ${migrateResult.converted} config(s) to TypeScript`);
-      }
-    } catch (error) {
-      console.warn("⚠️  Auto-migration failed (non-critical):", error);
-    }
+    // Validate and rename config files if IDs don't match filenames
+    console.log("\n🔍 Validating config file names...");
+    await this.validateAndRenameConfigFiles(targetDir);
 
     if (reloadConfig) {
       console.log("\n🔄 Reloading configuration...");
@@ -563,5 +620,88 @@ export class ConfigIO {
    */
   static async exportConfigWithOptions(options: ExportOptions): Promise<void> {
     await this.exportConfig(options.outputPath, options.configPath);
+  }
+
+  /**
+   * Read config file (JSON only)
+   * @param filePath - Base file path (without extension)
+   * @param category - Config category (clients, servers, events, sinks)
+   * @param format - Requested output format (always "json")
+   * @returns Promise with content and source format
+   */
+  static async readConfigFileAsync(
+    filePath: string,
+    category: string,
+    format: "json" | "ts",
+  ): Promise<{ content: string; sourceFormat: string }> {
+    const jsonPath = filePath + ".json";
+
+    if (!fs.existsSync(jsonPath)) {
+      throw new Error("File not found");
+    }
+
+    const jsonContent = fs.readFileSync(jsonPath, "utf-8");
+    return { content: jsonContent, sourceFormat: "json" };
+  }
+
+  /**
+   * Write config file (JSON only)
+   * @param filePath - Base file path (without extension)
+   * @param content - Config content (JSON string)
+   * @param category - Config category (clients, servers, events, sinks)
+   * @returns Object with upload format and stored format
+   */
+  static writeConfigFile(
+    filePath: string,
+    content: string,
+    category: string,
+  ): { uploadFormat: string; storedFormat: string } {
+    // Always store as JSON
+    const targetPath = filePath + ".json";
+    const tmpPath = targetPath + ".tmp";
+
+    try {
+      // Parse to validate
+      JSON.parse(content);
+
+      // Write to temp file
+      fs.writeFileSync(tmpPath, content, "utf-8");
+
+      // Move temp to final location
+      fs.renameSync(tmpPath, targetPath);
+
+      return {
+        uploadFormat: "json",
+        storedFormat: "json",
+      };
+    } catch (error) {
+      // Clean up temp file on error
+      if (fs.existsSync(tmpPath)) {
+        fs.unlinkSync(tmpPath);
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Delete config file (removes both .ts and .json versions if they exist)
+   * @param filePath - Base file path (without extension)
+   * @returns True if any files were deleted
+   */
+  static deleteConfigFile(filePath: string): boolean {
+    const tsPath = filePath + ".ts";
+    const jsonPath = filePath + ".json";
+    let deleted = false;
+
+    if (fs.existsSync(tsPath)) {
+      fs.unlinkSync(tsPath);
+      deleted = true;
+    }
+    if (fs.existsSync(jsonPath)) {
+      fs.unlinkSync(jsonPath);
+      deleted = true;
+    }
+
+    return deleted;
   }
 }

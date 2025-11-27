@@ -5,7 +5,7 @@
       "name": "example-github-actions-typescript-docker",
       "dependencies": {
         "glob": "^13.0.0",
-        "typescript": "^5.0.4",
+        "typescript": "^5.6.3",
       },
       "devDependencies": {
         "@biomejs/biome": "^1.8.3",

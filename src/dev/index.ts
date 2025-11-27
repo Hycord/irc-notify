@@ -382,8 +382,8 @@ function generateServers(configDir: string): any[] {
       users: ["NickServ", "ChanServ", "BotServ"],
     };
 
-    const serverPath = path.join(configDir, "servers", `${server.id}.ts`);
-    const content = `export default defineServer(${JSON.stringify(server, null, 2)});\n`;
+    const serverPath = path.join(configDir, "servers", `${server.id}.json`);
+    const content = JSON.stringify(server, null, 2);
     fs.writeFileSync(serverPath, content);
     servers.push(server);
   }
@@ -399,8 +399,8 @@ function generateServers(configDir: string): any[] {
       users: ["NickServ", "ChanServ", "BotServ"],
     };
 
-    const serverPath = path.join(configDir, "servers", `${server.id}.ts`);
-    const content = `export default defineServer(${JSON.stringify(server, null, 2)});\n`;
+    const serverPath = path.join(configDir, "servers", `${server.id}.json`);
+    const content = JSON.stringify(server, null, 2);
     fs.writeFileSync(serverPath, content);
     servers.push(server);
   }
@@ -641,8 +641,8 @@ function generateClients(
           : servers.filter((s) => s.id.includes("shared")).map((s) => s.id),
     };
 
-    const clientPath = path.join(configDir, "clients", `${client.id}.ts`);
-    const content = `export default defineClient(${JSON.stringify(client, null, 2)});\n`;
+    const clientPath = path.join(configDir, "clients", `${client.id}.json`);
+    const content = JSON.stringify(client, null, 2);
     fs.writeFileSync(clientPath, content);
 
     generateClientLogs(client, messages, servers, logsDir);
@@ -669,15 +669,13 @@ function cloneEvents(configDir: string): string[] {
   const clonedEvents = [];
 
   for (const eventId of originalEvents) {
-    const originalPath = path.join(configDir, "events", `${eventId}.ts`);
+    const originalPath = path.join(configDir, "events", `${eventId}.json`);
     if (!fs.existsSync(originalPath)) continue;
 
     const content = fs.readFileSync(originalPath, "utf-8");
-    const match = content.match(/defineEvent\(([\s\S]+)\);/);
-    if (!match) continue;
 
     try {
-      const originalEvent = eval(`(${match[1]})`);
+      const originalEvent = JSON.parse(content);
       const devEvent = {
         ...originalEvent,
         id: `dev-${eventId}`,
@@ -690,8 +688,8 @@ function cloneEvents(configDir: string): string[] {
         },
       };
 
-      const devPath = path.join(configDir, "events", `dev-${eventId}.ts`);
-      const devContent = `export default defineEvent(${JSON.stringify(devEvent, null, 2)});\n`;
+      const devPath = path.join(configDir, "events", `dev-${eventId}.json`);
+      const devContent = JSON.stringify(devEvent, null, 2);
       fs.writeFileSync(devPath, devContent);
       clonedEvents.push(`dev-${eventId}`);
     } catch (error) {
@@ -726,8 +724,8 @@ function createDevSink(configDir: string, logsDir: string): void {
     },
   };
 
-  const sinkPath = path.join(configDir, "sinks", "dev-sink.ts");
-  const content = `export default defineSink(${JSON.stringify(sink, null, 2)});\n`;
+  const sinkPath = path.join(configDir, "sinks", "dev-sink.json");
+  const content = JSON.stringify(sink, null, 2);
   fs.writeFileSync(sinkPath, content);
 }
 
@@ -775,7 +773,7 @@ function updateDevConfig(
     sinks: ["dev-sink"],
   };
 
-  fs.writeFileSync("./config.dev.ts", `export default ${JSON.stringify(config, null, 2)};\n`);
+  fs.writeFileSync("./config.dev.json", JSON.stringify(config, null, 2));
 }
 
 // ============================================================================
@@ -839,7 +837,7 @@ export async function generateDevData(options: DevGeneratorOptions = {}): Promis
   exportGroundTruth(messages, groundTruthLog);
   console.log(`  ✓ Ground truth exported (${messages.length} entries)`);
 
-  console.log("\n⚙️  Updating config.dev.ts...");
+  console.log("\n⚙️  Updating config.dev.json...");
   updateDevConfig(clients, servers, events, configDir);
   console.log("  ✓ Config updated");
 
@@ -869,7 +867,7 @@ export async function cleanupDevData(options: DevCleanupOptions = {}): Promise<v
   if (fs.existsSync(clientsDir)) {
     const clientFiles = fs
       .readdirSync(clientsDir)
-      .filter((f) => f.startsWith("dev-") && (f.endsWith(".json") || f.endsWith(".ts")));
+      .filter((f) => f.startsWith("dev-") && f.endsWith(".json"));
     for (const file of clientFiles) {
       const filePath = path.join(clientsDir, file);
       fs.unlinkSync(filePath);
@@ -883,7 +881,7 @@ export async function cleanupDevData(options: DevCleanupOptions = {}): Promise<v
   if (fs.existsSync(serversDir)) {
     const serverFiles = fs
       .readdirSync(serversDir)
-      .filter((f) => f.startsWith("dev-") && (f.endsWith(".json") || f.endsWith(".ts")));
+      .filter((f) => f.startsWith("dev-") && f.endsWith(".json"));
     for (const file of serverFiles) {
       const filePath = path.join(serversDir, file);
       fs.unlinkSync(filePath);
@@ -897,7 +895,7 @@ export async function cleanupDevData(options: DevCleanupOptions = {}): Promise<v
   if (fs.existsSync(eventsDir)) {
     const eventFiles = fs
       .readdirSync(eventsDir)
-      .filter((f) => f.startsWith("dev-") && (f.endsWith(".json") || f.endsWith(".ts")));
+      .filter((f) => f.startsWith("dev-") && f.endsWith(".json"));
     for (const file of eventFiles) {
       const filePath = path.join(eventsDir, file);
       fs.unlinkSync(filePath);
@@ -911,7 +909,7 @@ export async function cleanupDevData(options: DevCleanupOptions = {}): Promise<v
   if (fs.existsSync(sinksDir)) {
     const sinkFiles = fs
       .readdirSync(sinksDir)
-      .filter((f) => f.startsWith("dev-") && (f.endsWith(".json") || f.endsWith(".ts")));
+      .filter((f) => f.startsWith("dev-") && f.endsWith(".json"));
     for (const file of sinkFiles) {
       const filePath = path.join(sinksDir, file);
       fs.unlinkSync(filePath);
@@ -952,7 +950,7 @@ export async function cleanupDevData(options: DevCleanupOptions = {}): Promise<v
   // Remove config.dev files
   if (removeConfigDev) {
     console.log("\nRemoving config.dev files...");
-    for (const ext of [".json", ".ts"]) {
+    for (const ext of [".json"]) {
       const configDevPath = `./config.dev${ext}`;
       if (fs.existsSync(configDevPath)) {
         fs.rmSync(configDevPath);

@@ -54,7 +54,7 @@ Container deployment isolates runtime, provides reproducible builds, and auto-pu
 
 5. (Optional) Override config path:
    ```bash
-   docker run -e CONFIG_PATH=/app/config/config.ts ...
+   docker run -e CONFIG_PATH=/app/config/config.json ...
    ```
 
 ### Method 2: Direct Install
@@ -130,16 +130,16 @@ Create the following directory structure:
 ```
 irc-notify/
 ├── config/
-│   ├── config.ts              # Main config (lists IDs)
+│   ├── config.json            # Main config (auto-discovers by default)
 │   ├── clients/
-│   │   └── textual.ts         # Example client
+│   │   └── textual.json       # Example client
 │   ├── servers/
-│   │   └── libera.ts          # Example server
+│   │   └── libera.json        # Example server
 │   ├── events/
-│   │   └── phrase-alert.ts    # Example event
+│   │   └── phrase-alert.json  # Example event
 │   └── sinks/
-│       ├── console.ts         # Console output
-│       └── ntfy.ts            # Ntfy notifications
+│       ├── console.json       # Console output
+│       └── ntfy.json          # Ntfy notifications
 └── logs/                      # Your IRC logs
     └── textual/               # Client-specific structure
 ```
@@ -148,25 +148,20 @@ irc-notify/
 
 ### Minimal Configuration
 
-Create `config/config.ts`:
+Create `config/config.json`:
 
-```typescript
-import { defineStrictConfig } from '../src/config/strict-types';
-
-export default defineStrictConfig({
-  global: {
-    pollInterval: 1000,
-    debug: false,
-    defaultLogDirectory: "./logs",
-    configDirectory: ".",
-    rescanLogsOnStartup: false
-  },
-  clients: ["textual"],
-  servers: ["libera"],
-  events: ["phrase-alert"],
-  sinks: ["console"]
-});
+```json
+{
+  "global": {
+    "pollInterval": 1000,
+    "debug": false,
+    "defaultLogDirectory": "./logs",
+    "rescanLogsOnStartup": false
+  }
+}
 ```
+
+**Note:** This file is optional! Configs are automatically discovered from their respective directories (`clients/`, `servers/`, `events/`, `sinks/`).
 
 See [Configuration Overview](./configuration.md) for complete reference.
 
@@ -185,7 +180,7 @@ See [Configuration Overview](./configuration.md) for complete reference.
 
 3. **Run in debug mode**
    ```bash
-   # Edit config/config.ts and set debug: true
+   # Edit config/config.json and set debug: true
    bun start
    ```
 
@@ -204,7 +199,7 @@ curl -fsSL https://bun.sh/install | bash
 ```
 
 ### Config validation fails
-- Check TypeScript syntax in config files
+- Check JSON syntax in config files
 - Ensure all referenced IDs exist
 - Validate regex patterns are properly escaped
 
@@ -225,9 +220,6 @@ git pull origin main
 
 # Update dependencies
 bun install
-
-# Migrate configs if needed
-bun run config:migrate
 
 # Validate
 bun run config:validate

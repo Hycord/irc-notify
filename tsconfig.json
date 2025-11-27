@@ -2,14 +2,15 @@
   "$schema": "https://json.schemastore.org/tsconfig",
   "compilerOptions": {
     "target": "ES2022",
-    "module": "es2022",
+    "module": "ES2022",
+    "moduleResolution": "bundler",
+    
+    "types": ["./src/types/globals.d.ts", "bun"],
     "esModuleInterop": true,
     "strict": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
-    "outDir": "dist",
-    "resolveJsonModule": true,
-    "types": ["./src/types/globals.d.ts"]
+    "outDir": "dist"
   },
   "exclude": ["node_modules", "dist"],
   "include": ["./src/**/*", "./config/**/*", "config/config.ts"]

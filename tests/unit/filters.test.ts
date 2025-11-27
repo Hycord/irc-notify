@@ -64,4 +64,71 @@ describe("FilterEngine", () => {
     };
     expect(FilterEngine.evaluate(group, context)).toBe(true);
   });
+
+  it("resolves templates in filter values", () => {
+    const context: MessageContext = {
+      raw: { line: "test", timestamp: new Date().toISOString() },
+      message: { content: "hello alice", type: "privmsg" },
+      client: { id: "c", type: "test", name: "Test" },
+      server: { clientNickname: "alice" },
+      timestamp: new Date(),
+      metadata: {},
+      sender: { nickname: "bob" },
+    };
+
+    const group = {
+      operator: "AND",
+      filters: [
+        { field: "message.content", operator: "contains", value: "{{server.clientNickname}}" },
+      ],
+    };
+    expect(FilterEngine.evaluate(group, context)).toBe(true);
+  });
+
+  it("resolves templates in array filter values", () => {
+    const context: MessageContext = {
+      raw: { line: "test", timestamp: new Date().toISOString() },
+      message: { content: "test", type: "privmsg" },
+      client: { id: "c", type: "test", name: "Test" },
+      server: { clientNickname: "alice" },
+      timestamp: new Date(),
+      metadata: {},
+      sender: { nickname: "alice" },
+    };
+
+    const group = {
+      operator: "AND",
+      filters: [
+        {
+          field: "sender.nickname",
+          operator: "in",
+          value: ["{{server.clientNickname}}", "bob", "charlie"],
+        },
+      ],
+    };
+    expect(FilterEngine.evaluate(group, context)).toBe(true);
+  });
+
+  it("resolves templates in patterns", () => {
+    const context: MessageContext = {
+      raw: { line: "test", timestamp: new Date().toISOString() },
+      message: { content: "hello alice", type: "privmsg" },
+      client: { id: "c", type: "test", name: "Test" },
+      server: { clientNickname: "alice" },
+      timestamp: new Date(),
+      metadata: {},
+    };
+
+    const group = {
+      operator: "AND",
+      filters: [
+        {
+          field: "message.content",
+          operator: "matches",
+          pattern: "{{server.clientNickname}}",
+        },
+      ],
+    };
+    expect(FilterEngine.evaluate(group, context)).toBe(true);
+  });
 });

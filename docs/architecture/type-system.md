@@ -1,8 +1,8 @@
 # IRC Notify Configuration Type System & Data Flow
 
-**Version**: 1.0  
-**Last Updated**: November 24, 2025  
-**Purpose**: Complete technical specification for rebuilding the TypeScript configuration type system with comprehensive validation
+**Version**: 1.1  
+**Last Updated**: November 25, 2025  
+**Purpose**: Complete technical specification for the JSON configuration type system with comprehensive validation
 
 ---
 
@@ -23,15 +23,15 @@
 
 ## Overview
 
-IRC Notify uses a **100% JSON/TypeScript-configured architecture** with no hardcoded business logic. The configuration system consists of five main config types that reference each other through IDs, with comprehensive runtime validation to ensure consistency.
+IRC Notify uses a **100% JSON-configured architecture** with no hardcoded business logic. The configuration system consists of five main config types that reference each other through IDs, with comprehensive runtime validation to ensure consistency.
 
 ### Core Principles
 
 1. **Everything is configurable** - No business logic in code
 2. **ID-based references** - Configs reference each other by string IDs
-3. **Validation at load time** - All configs validated during initialization
-4. **Template-driven** - All strings support `{{field.path}}` template syntax
-5. **Type-safe at build time** - TypeScript types enforce structure
+3. **Auto-discovery** - Configs automatically found in directories
+4. **Validation at load time** - All configs validated during initialization
+5. **Template-driven** - All strings support `{{field.path}}` template syntax
 
 ---
 
@@ -137,7 +137,7 @@ Log File → LogWatcher → ClientAdapter → MessageContext → EventProcessor 
 
 ### 1. IRCNotifyConfig (Root Configuration)
 
-**File**: `config/config.ts` or `config.json`
+**File**: `config/config.json` or `config.json` (optional - auto-discovers configs)
 
 ```typescript
 interface IRCNotifyConfig {
@@ -178,7 +178,7 @@ interface IRCNotifyConfig {
 
 ### 2. ClientConfig
 
-**File**: `config/clients/<id>.ts` or `config/clients/<id>.json`
+**File**: `config/clients/<id>.json`
 
 ```typescript
 interface ClientConfig {
@@ -303,6 +303,7 @@ interface ServerConfig {
   id: string;                    // Unique identifier (auto-set from filename if missing)
   hostname: string;              // IRC server hostname
   displayName: string;           // Human-readable name
+  clientNickname: string;        // Your nickname on this server
   network?: string;              // Network name (e.g., 'Libera.Chat')
   port?: number;                 // Port number (1-65535)
   tls?: boolean;                 // Whether TLS is used
@@ -324,6 +325,7 @@ interface ServerConfig {
 - `id` (required): Non-empty string
 - `hostname` (required): Non-empty string
 - `displayName` (required): Non-empty string
+- `clientNickname` (required): Non-empty string
 - `enabled` (required): Boolean
 - `port`: If present, integer between 1 and 65535
 - `tls`: If present, boolean
@@ -419,6 +421,7 @@ interface SinkConfig {
   rateLimit?: RateLimitConfig;   // Rate limiting rules
   allowedMetadata?: string[];    // Allowed keys in event.metadata.sink[id]
   metadata?: Record<string, any>;
+  payloadTransforms?: PayloadTransform[];  // Payload transformations (webhook sinks)
 }
 
 type SinkType = 'ntfy' | 'webhook' | 'console' | 'file' | 'custom';
@@ -528,6 +531,24 @@ interface WebhookSinkConfig {
   url: string;                   // Required, must be valid URL
   method?: string;               // HTTP method (default: 'POST')
   headers?: Record<string, string>;  // Optional custom headers
+  token?: string;                // Optional auth token
+}
+
+// Runtime behavior note:
+// Header values are sanitized before sending (non-ASCII chars removed) to avoid HTTP header encoding errors.
+// Use body content for Unicode/emoji if needed.
+
+interface PayloadTransform {
+  name: string;                  // Transform identifier (e.g., 'ntfy', 'discord')
+  contentType?: string;          // Content-Type header
+  method?: string;               // HTTP method override
+  headers?: Record<string, string | { template: string }>;
+  bodyFormat: 'json' | 'text' | 'form' | 'custom';
+  jsonTemplate?: Record<string, any>;   // For bodyFormat: 'json'
+  textTemplate?: string;         // For bodyFormat: 'text'
+  formTemplate?: Record<string, string>; // For bodyFormat: 'form'
+  priority?: number;             // Transform priority (higher = checked first)
+  condition?: FilterConfig | FilterGroup; // Optional filter for when to apply
 }
 ```
 
@@ -535,10 +556,18 @@ interface WebhookSinkConfig {
 - `config.url` (required): Valid URL format
 - `config.method`: If present, string
 - `config.headers`: If present, object
+- `config.token`: If present, string
+- `payloadTransforms` (recommended): Array of PayloadTransform objects
+- Each PayloadTransform must have `name` and `bodyFormat`
+- At least one transform should have no `condition` (default fallback)
 
 **Allowed Event Metadata Keys**:
-- `webhook.fields`: Object (additional JSON fields in payload)
-- `webhook.headers`: Object (merged with sink headers)
+- `title`: String template override
+- `body`: String template override
+- `transform`: String (name of specific transform to use)
+- `headers`: Object (merged with sink headers)
+- `webhook.fields`: Object (deprecated - additional JSON fields)
+- `webhook.headers`: Object (deprecated - merged with sink headers)
 
 **Payload Format** (when `template.format: 'json'`):
 ```json
@@ -634,12 +663,13 @@ EventConfig
    - All `sinks[]` must reference existing `SinkConfig.id`
 
 2. **Event Server References**
-   - All `EventConfig.serverIds[]` must be `'*'` or reference existing `ServerConfig.id`
-   - Wildcard `'*'` applies event to all servers
+  - `EventConfig.serverIds[]` may include `'*'` or existing `ServerConfig.id`
+  - Any non-existent IDs are removed during validation (warning logged) and changes are saved to the event file
+  - Wildcard `'*'` applies event to all servers
 
 3. **Event Sink References**
-   - All `EventConfig.sinkIds[]` must reference existing `SinkConfig.id`
-   - All referenced sinks must be `enabled: true` (warning if disabled)
+  - `EventConfig.sinkIds[]` must reference existing `SinkConfig.id`; non-existent IDs are removed during validation (warning logged) and changes are saved to the event file
+  - All referenced sinks must be `enabled: true` (warning if disabled)
 
 4. **Event Metadata References** (`ConfigRegistry.registerEvent()`)
    - All keys in `EventConfig.metadata.sink` must reference existing `SinkConfig.id`
@@ -840,15 +870,30 @@ All string values in configs support template variable substitution using `{{fie
 
 ### Available Context
 
-Templates have access to the entire `MessageContext` structure plus event info:
+Templates have access to the `MessageContext` structure. The exact context structure varies by where the template is used:
 
+**For sink config templates** (e.g., `SinkConfig.template.title`):
 ```typescript
-interface TemplateContext extends MessageContext {
-  event: {
-    id: string;
-    name: string;
-    baseEvent: string;
-  };
+interface SinkTemplateContext {
+  context: MessageContext;     // Full message context
+  event: EventConfig;          // Full event config
+  metadata: Record<string, any>; // Event metadata for this sink
+}
+```
+
+**For filter values and other contexts**:
+Templates receive `MessageContext` directly and can access fields like `{{server.id}}`, `{{sender.nickname}}`, etc.
+
+**For webhook payloadTransforms**:
+```typescript
+interface WebhookTemplateContext {
+  context: MessageContext;     // Nested under 'context' key
+  event: EventConfig;          // Full event config
+  metadata: Record<string, any>; // Event metadata
+  config: Record<string, any>;   // Sink config
+  title: string;               // Processed title
+  body: string;                // Processed body
+  // ... other processed template fields
 }
 ```
 
@@ -874,6 +919,7 @@ interface TemplateContext extends MessageContext {
 {{server.id}}                  // Server ID
 {{server.hostname}}            // Server hostname
 {{server.displayName}}         // Display name
+{{server.clientNickname}}      // Your nickname on this server
 {{server.network}}             // Network name
 {{server.metadata.customKey}}  // Custom metadata
 
@@ -1400,6 +1446,7 @@ interface MessageContext {
     id?: string;               // ServerConfig.id (enriched)
     hostname?: string;         // ServerConfig.hostname (enriched)
     displayName?: string;      // ServerConfig.displayName (enriched)
+    clientNickname?: string;   // ServerConfig.clientNickname (enriched)
     network?: string;          // ServerConfig.network (enriched)
     ip?: string;               // IP address
     port?: number;             // Port number (enriched)
@@ -1442,6 +1489,7 @@ interface MessageContext {
 | Version | Date | Changes |
 |---------|------|---------|
 | 1.0 | 2025-11-24 | Initial comprehensive specification |
+| 1.1 | 2025-11-25 | Added `clientNickname` to ServerConfig, documented payloadTransforms for webhook sinks, clarified template context structures for different use cases |
 
 ---
 

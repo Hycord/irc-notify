@@ -10,8 +10,8 @@ RUN bun install --frozen-lockfile
 COPY src ./src
 COPY tsconfig.json ./
 
-# Copy default configuration (will be auto-copied to config/ on first run)
-COPY config.default.ts ./
+# Copy default configuration
+COPY config.default.json ./
 
 # Set environment variables
 ENV LOG_DIR=/logs

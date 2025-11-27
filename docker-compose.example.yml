@@ -1,0 +1,72 @@
+version: '3.8'
+
+services:
+  irc-notify:
+    image: ghcr.io/hycord/irc-notify:latest
+    container_name: irc-notify
+    restart: unless-stopped
+    
+    # Mount logs directory (read-only for security)
+    # This should contain your IRC client logs:
+    #   logs/textual/ServerName (UUID)/Channels/*.txt
+    #   logs/thelounge/logs/admin/network/*.log
+    volumes:
+      - ./logs:/logs:ro
+      - ./config:/app/config
+      - ./backups:/app/backups
+    
+    # Optional: Enable Config API
+    environment:
+      # API configuration
+      - ENABLE_API=true
+      - API_PORT=3000
+      - API_HOST=0.0.0.0
+      # API_TOKEN is auto-generated and stored in config/auth_token.txt
+      
+      # Optional: Customize log directory
+      # - LOG_DIR=/custom/path
+    
+    # Optional: Expose API port
+    ports:
+      - "3000:3000"
+    
+    # Healthcheck (if API enabled)
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+# Example with The Lounge integration
+# The Lounge's full data directory is mounted to ./logs/thelounge/
+# This provides access to logs/admin/, users/, etc. at the expected path
+#
+# services:
+#   thelounge:
+#     image: thelounge/thelounge:latest
+#     container_name: thelounge
+#     restart: unless-stopped
+#     ports:
+#       - "9000:9000"
+#     volumes:
+#       # Mount The Lounge data to host ./logs/thelounge/ directory
+#       # This makes the full data structure accessible to irc-notify
+#       - ./logs/thelounge:/var/opt/thelounge
+#
+#   irc-notify:
+#     image: ghcr.io/hycord/irc-notify:latest
+#     container_name: irc-notify
+#     restart: unless-stopped
+#     depends_on:
+#       - thelounge
+#     volumes:
+#       # Mount entire logs directory (contains both textual/ and thelounge/)
+#       - ./logs:/logs:ro
+#       - ./config:/app/config
+#       - ./backups:/app/backups
+#     environment:
+#       - ENABLE_API=true
+#       - API_PORT=3000
+#     ports:
+#       - "3000:3000"

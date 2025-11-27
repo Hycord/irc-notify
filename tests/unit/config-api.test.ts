@@ -43,7 +43,8 @@ describe("Config API Server", () => {
     });
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body.status).toBeDefined();
-    expect(body.status.running).toBe(true);
+    expect(body.running).toBeDefined();
+    expect(body.running).toBe(true);
+    expect(body.configDirectory).toBeDefined();
   });
 });

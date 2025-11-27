@@ -24,9 +24,10 @@ export class ConfigRegistry {
 
   /**
    * Register a client config
+   * @param skipWarning - Skip warning if already registered (for duplicate loads)
    */
-  static registerClient(config: ClientConfig): ClientConfig {
-    if (this.clients.has(config.id)) {
+  static registerClient(config: ClientConfig, skipWarning = false): ClientConfig {
+    if (this.clients.has(config.id) && !skipWarning) {
       console.warn(`Warning: Client '${config.id}' is already registered. Overwriting.`);
     }
     this.clients.set(config.id, config);
@@ -35,9 +36,10 @@ export class ConfigRegistry {
 
   /**
    * Register a server config
+   * @param skipWarning - Skip warning if already registered (for duplicate loads)
    */
-  static registerServer(config: ServerConfig): ServerConfig {
-    if (this.servers.has(config.id)) {
+  static registerServer(config: ServerConfig, skipWarning = false): ServerConfig {
+    if (this.servers.has(config.id) && !skipWarning) {
       console.warn(`Warning: Server '${config.id}' is already registered. Overwriting.`);
     }
     this.servers.set(config.id, config);
@@ -46,9 +48,10 @@ export class ConfigRegistry {
 
   /**
    * Register an event config and validate sink metadata
+   * @param skipWarning - Skip warning if already registered (for duplicate loads)
    */
-  static registerEvent(config: EventConfig): EventConfig {
-    if (this.events.has(config.id)) {
+  static registerEvent(config: EventConfig, skipWarning = false): EventConfig {
+    if (this.events.has(config.id) && !skipWarning) {
       console.warn(`Warning: Event '${config.id}' is already registered. Overwriting.`);
     }
 
@@ -82,9 +85,10 @@ export class ConfigRegistry {
 
   /**
    * Register a sink config
+   * @param skipWarning - Skip warning if already registered (for duplicate loads)
    */
-  static registerSink(config: SinkConfig): SinkConfig {
-    if (this.sinks.has(config.id)) {
+  static registerSink(config: SinkConfig, skipWarning = false): SinkConfig {
+    if (this.sinks.has(config.id) && !skipWarning) {
       console.warn(`Warning: Sink '${config.id}' is already registered. Overwriting.`);
     }
     this.sinks.set(config.id, config);
@@ -93,9 +97,10 @@ export class ConfigRegistry {
 
   /**
    * Register the main config
+   * @param skipWarning - Skip warning if already registered (for duplicate loads)
    */
-  static registerMainConfig(config: IRCNotifyConfig): IRCNotifyConfig {
-    if (this.mainConfig) {
+  static registerMainConfig(config: IRCNotifyConfig, skipWarning = false): IRCNotifyConfig {
+    if (this.mainConfig && !skipWarning) {
       console.warn("Warning: Main config is already registered. Overwriting.");
     }
     this.mainConfig = config;
@@ -108,31 +113,39 @@ export class ConfigRegistry {
   static validateMainConfigReferences(config: IRCNotifyConfig): void {
     const errors: string[] = [];
 
-    // Validate client references
-    for (const clientId of config.clients) {
-      if (!this.clients.has(clientId)) {
-        errors.push(`Main config references unknown client: '${clientId}'`);
+    // Validate client references (if specified)
+    if (config.clients) {
+      for (const clientId of config.clients) {
+        if (!this.clients.has(clientId)) {
+          errors.push(`Main config references unknown client: '${clientId}'`);
+        }
       }
     }
 
-    // Validate server references
-    for (const serverId of config.servers) {
-      if (!this.servers.has(serverId)) {
-        errors.push(`Main config references unknown server: '${serverId}'`);
+    // Validate server references (if specified)
+    if (config.servers) {
+      for (const serverId of config.servers) {
+        if (!this.servers.has(serverId)) {
+          errors.push(`Main config references unknown server: '${serverId}'`);
+        }
       }
     }
 
-    // Validate event references
-    for (const eventId of config.events) {
-      if (!this.events.has(eventId)) {
-        errors.push(`Main config references unknown event: '${eventId}'`);
+    // Validate event references (if specified)
+    if (config.events) {
+      for (const eventId of config.events) {
+        if (!this.events.has(eventId)) {
+          errors.push(`Main config references unknown event: '${eventId}'`);
+        }
       }
     }
 
-    // Validate sink references
-    for (const sinkId of config.sinks) {
-      if (!this.sinks.has(sinkId)) {
-        errors.push(`Main config references unknown sink: '${sinkId}'`);
+    // Validate sink references (if specified)
+    if (config.sinks) {
+      for (const sinkId of config.sinks) {
+        if (!this.sinks.has(sinkId)) {
+          errors.push(`Main config references unknown sink: '${sinkId}'`);
+        }
       }
     }
 

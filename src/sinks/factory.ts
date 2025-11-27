@@ -2,6 +2,7 @@ import { Sink, SinkConfig } from "../types";
 import { ConsoleSink } from "./console";
 import { FileSink } from "./file";
 import { NtfySink } from "./ntfy";
+import { TestCaptureSink } from "./test-capture";
 import { WebhookSink } from "./webhook";
 
 /**
@@ -13,6 +14,7 @@ export class SinkFactory {
     ["ntfy", NtfySink],
     ["webhook", WebhookSink],
     ["file", FileSink],
+    ["custom", TestCaptureSink],
   ]);
 
   /**

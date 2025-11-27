@@ -10,17 +10,22 @@ Complete index of all IRC Notify documentation.
 
 - [Installation & Setup](./guides/installation.md) - Install Bun, clone repo, verify setup
 - [Quick Start Guide](./guides/quickstart.md) - Get running in 5 minutes
+- [Deployment Guide](./guides/deployment.md) - Production deployment with Docker
 - [Configuration Overview](./guides/configuration.md) - Complete config reference
 - [Releases & Versioning](./guides/releases.md) - Formal release process
 
 ## 📝 Configuration Guides
 
 ### Core Systems
-- [TypeScript Configuration](./guides/typescript-config.md) - TS config system, migration from JSON
-- [Strict Types & Autocomplete](./guides/strict-types.md) - Compile-time validation, autocomplete
+- [Configuration Overview](./guides/configuration.md) - Complete JSON config reference
 - [Development Guide](./guides/development.md) - Development workflow and testing
 
+### Client Setup Guides
+- [Textual IRC Client](./guides/clients/textual.md) - Configure monitoring for Textual
+- [The Lounge Client](./guides/clients/thelounge.md) - Configure monitoring for The Lounge
+
 ### Advanced Features
+- [Webhook Payload Transforms](./guides/webhook-transforms.md) - Config-driven webhook customization
 - [Host Metadata Overrides](./guides/host-metadata.md) - Event-level server overrides
 - [CLI Reference](./guides/cli.md) - Command line interface
 
@@ -32,12 +37,18 @@ Complete index of all IRC Notify documentation.
 
 ## 🔧 API Reference
 
-### Core APIs
-- [ConfigIO](./api/config-io.md) - Import/export utilities
-- [Config API](./api/config-api.md) - HTTP interface for runtime config management
+### API Server (HTTP Endpoints)
+- [Config API](./api-server/config-api.md) - HTTP interface for runtime config management
+- [Root Config API](./api-server/root-config.md) - Manage root configuration
+- [Data Flow API](./api-server/data-flow.md) - Comprehensive data flow visualization endpoint
+- [Logs API](./api-server/logs-api.md) - Log file exploration and reading with chunking/compression
+- [Server Architecture](./api-server/server-architecture.md) - API server internal structure
+- [API Type Reference](./api-server/type-reference.ts) - TypeScript definitions for API responses
 
-### Processing APIs
-- [FilterEngine](./api/filter-engine.md) - Filter evaluation
+### Core APIs (Internal Utilities)
+- [ConfigIO](./core-apis/config-io.md) - Import/export and transcoding utilities
+- [FilterEngine](./core-apis/filter-engine.md) - Filter evaluation and matching
+- [TemplateEngine](./core-apis/template-engine.md) - Template variable processing
 
 ## 📚 Additional Resources
 
@@ -51,8 +62,6 @@ Complete index of all IRC Notify documentation.
 
 **Configuration**
 - [Configuration Overview](./guides/configuration.md)
-- [TypeScript Config](./guides/typescript-config.md)
-- [Strict Types](./guides/strict-types.md)
 - [CLI Reference](./guides/cli.md)
 
 **Filtering**
@@ -79,10 +88,9 @@ Complete index of all IRC Notify documentation.
 4. [Type System Reference](./architecture/type-system.md)
 
 **Power Users**
-1. [TypeScript Config](./guides/typescript-config.md)
-2. [Strict Types](./guides/strict-types.md)
-3. [Host Metadata](./guides/host-metadata.md)
-4. [CLI Reference](./guides/cli.md)
+1. [Configuration Overview](./guides/configuration.md)
+2. [Host Metadata](./guides/host-metadata.md)
+3. [CLI Reference](./guides/cli.md)
 
 **Developers**
 1. [Development Guide](./guides/development.md)

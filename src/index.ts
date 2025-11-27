@@ -28,6 +28,7 @@ export class IRCNotifyOrchestrator {
   private clients: Map<string, ClientAdapter> = new Map();
   private sinks: Map<string, Sink> = new Map();
   private watchers: LogWatcher[] = [];
+  private watcherPositions: Map<string, Map<string, number>> = new Map(); // clientId -> filePositions
   private eventProcessor!: EventProcessor;
   private configPath?: string;
   private configDir!: string;
@@ -69,10 +70,16 @@ export class IRCNotifyOrchestrator {
     this.configDir = configDir;
 
     console.log(`Loaded configuration from ${actualPath}`);
-    console.log(`  - ${this.clientConfigs.length} clients`);
-    console.log(`  - ${this.serverConfigs.length} servers`);
-    console.log(`  - ${this.eventConfigs.length} events`);
-    console.log(`  - ${this.sinkConfigs.length} sinks`);
+
+    const enabledClients = this.clientConfigs.filter((c) => c.enabled).length;
+    const enabledServers = this.serverConfigs.filter((s) => s.enabled).length;
+    const enabledEvents = this.eventConfigs.filter((e) => e.enabled).length;
+    const enabledSinks = this.sinkConfigs.filter((s) => s.enabled).length;
+
+    console.log(`  - ${this.clientConfigs.length} clients (${enabledClients} enabled)`);
+    console.log(`  - ${this.serverConfigs.length} servers (${enabledServers} enabled)`);
+    console.log(`  - ${this.eventConfigs.length} events (${enabledEvents} enabled)`);
+    console.log(`  - ${this.sinkConfigs.length} sinks (${enabledSinks} enabled)`);
 
     // Initialize clients
     await this.initializeClients();
@@ -96,6 +103,9 @@ export class IRCNotifyOrchestrator {
   private async initializeClients(): Promise<void> {
     for (const clientConfig of this.clientConfigs) {
       if (!clientConfig.enabled) {
+        if (this.config.global.debug) {
+          console.log(`Skipping disabled client: ${clientConfig.name} (${clientConfig.id})`);
+        }
         continue;
       }
 
@@ -118,6 +128,9 @@ export class IRCNotifyOrchestrator {
   private async initializeSinks(): Promise<void> {
     for (const sinkConfig of this.sinkConfigs) {
       if (!sinkConfig.enabled) {
+        if (this.config.global.debug) {
+          console.log(`Skipping disabled sink: ${sinkConfig.name} (${sinkConfig.id})`);
+        }
         continue;
       }
 
@@ -176,7 +189,7 @@ export class IRCNotifyOrchestrator {
     const { ConfigIO } = await import("./config/import-export");
 
     // Check if config already exists
-    const configCandidates = ["config/config.ts", "config.ts", "config/config.json", "config.json"];
+    const configCandidates = ["config/config.json", "config.json"];
 
     const hasConfig = configCandidates.some((c) => fs.existsSync(c));
 
@@ -272,6 +285,41 @@ export class IRCNotifyOrchestrator {
     return this.config;
   }
 
+  /**
+   * Get all client configurations
+   */
+  getClientConfigs(): ClientConfig[] {
+    return this.clientConfigs;
+  }
+
+  /**
+   * Get all server configurations
+   */
+  getServerConfigs(): ServerConfig[] {
+    return this.serverConfigs;
+  }
+
+  /**
+   * Get all event configurations
+   */
+  getEventConfigs(): EventConfig[] {
+    return this.eventConfigs;
+  }
+
+  /**
+   * Get all sink configurations
+   */
+  getSinkConfigs(): SinkConfig[] {
+    return this.sinkConfigs;
+  }
+
+  /**
+   * Get all client adapter instances
+   */
+  getClientInstances(): Map<string, ClientAdapter> {
+    return this.clients;
+  }
+
   async startApi(options?: {
     port?: number;
     host?: string;
@@ -330,18 +378,55 @@ export class IRCNotifyOrchestrator {
   }
 
   /**
-   * Handle a new message from log files
+   * Handle incoming message from log watcher
    */
   private async handleMessage(context: MessageContext): Promise<void> {
     try {
+      if (this.config.global.debug) {
+        console.log(
+          `[handleMessage] Processing message from ${context.client.id}: ${context.message?.content?.substring(0, 50)}`,
+        );
+      }
+
+      // Check if the client is enabled
+      const clientConfig = this.clientConfigs.find((c) => c.id === context.client.id);
+      if (!clientConfig || !clientConfig.enabled) {
+        if (this.config.global.debug) {
+          console.log(`Skipping message from disabled client: ${context.client.id}`);
+        }
+        return;
+      }
+
       // Process message through event system
       const matchedEvents = this.eventProcessor.processMessage(context);
 
       // Send notifications for matched events
       for (const event of matchedEvents) {
-        for (const sinkId of event.sinkIds) {
-          const sink = this.sinks.get(sinkId);
+        // Chain-drop: if any sink referenced by the event is disabled, drop the whole event
+        const disabledSink = event.sinkIds.find((sid) => {
+          const cfg = this.sinkConfigs.find((s) => s.id === sid);
+          return !cfg || !cfg.enabled;
+        });
+        if (disabledSink) {
+          if (this.config.global.debug) {
+            console.log(
+              `Dropping event '${event.id}' due to disabled sink in chain: ${disabledSink}`,
+            );
+          }
+          continue;
+        }
 
+        for (const sinkId of event.sinkIds) {
+          // Check if sink is enabled
+          const sinkConfig = this.sinkConfigs.find((s) => s.id === sinkId);
+          if (!sinkConfig || !sinkConfig.enabled) {
+            if (this.config.global.debug) {
+              console.log(`Skipping disabled sink: ${sinkId}`);
+            }
+            continue;
+          }
+
+          const sink = this.sinks.get(sinkId);
           if (!sink) {
             console.warn(`Sink not found: ${sinkId}`);
             continue;
@@ -372,11 +457,38 @@ export class IRCNotifyOrchestrator {
 
       const wasRunning = this.running;
       if (wasRunning) {
+        // Save file positions from all watchers before stopping
+        for (let i = 0; i < this.watchers.length; i++) {
+          const watcher = this.watchers[i];
+          const clientId = Array.from(this.clients.keys())[i];
+          if (clientId) {
+            this.watcherPositions.set(clientId, watcher.getFilePositions());
+          }
+        }
+
         // Stop watchers only (keep instantiated clients/sinks until replaced)
         for (const watcher of this.watchers) {
           watcher.stop();
         }
         this.watchers = [];
+      }
+
+      // Validate and rename config files before reload
+      const currentConfigDir = this.configDir || path.resolve("./config");
+      try {
+        const { ConfigIO } = await import("./config/import-export");
+        await ConfigIO.validateAndRenameConfigFiles(currentConfigDir);
+      } catch (e) {
+        // Non-critical - continue with reload even if validation fails
+        if (this.config?.global?.debug) {
+          console.error("Config validation failed (non-critical):", e);
+        }
+      }
+
+      // Clear Bun's module cache to ensure fresh imports
+      // Note: Cache busting via query params (?t=timestamp) also helps
+      if (this.config?.global?.debug) {
+        console.log("Clearing module cache for reload...");
       }
 
       const loaded = await ConfigLoader.load(this.configPath);
@@ -454,11 +566,13 @@ export class IRCNotifyOrchestrator {
       // Restart watchers if previously running
       if (wasRunning) {
         for (const [clientId, adapter] of this.clients) {
+          const savedPositions = this.watcherPositions.get(clientId);
           const watcher = new LogWatcher(
             adapter,
             (context) => this.handleMessage(context),
             this.config.global.debug || false,
             false,
+            savedPositions, // Restore previous positions
           );
           await watcher.start();
           this.watchers.push(watcher);
@@ -535,15 +649,83 @@ export class IRCNotifyOrchestrator {
    */
   getStatus(): {
     running: boolean;
-    clients: number;
-    sinks: number;
-    events: number;
+    reloading: boolean;
+    clients: {
+      total: number;
+      enabled: number;
+      list: Array<{ id: string; enabled: boolean; type: string }>;
+    };
+    servers: {
+      total: number;
+      enabled: number;
+      list: Array<{ id: string; enabled: boolean; displayName: string }>;
+    };
+    sinks: {
+      total: number;
+      enabled: number;
+      list: Array<{ id: string; enabled: boolean; type: string }>;
+    };
+    events: {
+      total: number;
+      enabled: number;
+      list: Array<{
+        id: string;
+        enabled: boolean;
+        serverIds: string[];
+        sinkIds: string[];
+        baseEvent: EventConfig["baseEvent"];
+        priority?: number;
+      }>;
+    };
+    watchers: number;
+    configPath?: string;
+    configDirectory: string;
   } {
     return {
       running: this.running,
-      clients: this.clients.size,
-      sinks: this.sinks.size,
-      events: this.eventConfigs.filter((e) => e.enabled).length,
+      reloading: this.reloading,
+      clients: {
+        total: this.clientConfigs.length,
+        enabled: this.clientConfigs.filter((c) => c.enabled).length,
+        list: this.clientConfigs.map((c) => ({
+          id: c.id,
+          enabled: c.enabled,
+          type: c.type || c.id,
+        })),
+      },
+      servers: {
+        total: this.serverConfigs.length,
+        enabled: this.serverConfigs.filter((s) => s.enabled).length,
+        list: this.serverConfigs.map((s) => ({
+          id: s.id,
+          enabled: s.enabled,
+          displayName: s.displayName,
+        })),
+      },
+      sinks: {
+        total: this.sinkConfigs.length,
+        enabled: this.sinkConfigs.filter((s) => s.enabled).length,
+        list: this.sinkConfigs.map((s) => ({
+          id: s.id,
+          enabled: s.enabled,
+          type: s.type,
+        })),
+      },
+      events: {
+        total: this.eventConfigs.length,
+        enabled: this.eventConfigs.filter((e) => e.enabled).length,
+        list: this.eventConfigs.map((e) => ({
+          id: e.id,
+          enabled: e.enabled,
+          serverIds: e.serverIds,
+          sinkIds: e.sinkIds,
+          baseEvent: e.baseEvent,
+          priority: e.priority,
+        })),
+      },
+      watchers: this.watchers.length,
+      configPath: this.configPath,
+      configDirectory: this.configDir,
     };
   }
 }

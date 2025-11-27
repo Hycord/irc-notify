@@ -5,14 +5,14 @@ A TypeScript-based IRC notification system that monitors IRC client log files an
 ## Features
 
 - **100% Configuration-Driven** - No hardcoded business logic
-- **TypeScript Configs** - Compile-time validation with autocomplete
+- **JSON Configs** - Simple, portable configuration files
 - **Flexible Filtering** - Powerful filter engine with AND/OR logic, regex matching
 - **Template System** - Custom notification text using `{{field.path}}` syntax
 - **Multiple Sinks** - Console, Ntfy, Webhooks, Files, and custom sinks
 - **Zero-Code Adapters** - New IRC clients need only config files
 - **Rate Limiting** - Per-sink rate limits to prevent spam
 - **Import/Export** - Backup and share configs via compressed JSON bundles
-- **Development Tools** - Generate test data, validate configs, migrate JSON→TS
+- **Development Tools** - Generate test data, validate configs, export/import config bundles
 
 ## Quick Start
 
@@ -77,13 +77,13 @@ git clone https://github.com/hycord/irc-notify.git
 cd irc-notify
 bun install
 
-# Run (automatically creates /config structure from config.default.ts)
+# Run (automatically creates config directories on first run)
 bun start
 
 # Or watch mode
 bun dev
 
-# Validate and ensure config structure exists
+# Validate configuration
 bun run config:validate
 ```
 
@@ -94,12 +94,15 @@ See [Quick Start Guide](./docs/guides/quickstart.md) for detailed setup.
 ### 📚 Getting Started
 - [Installation & Setup](./docs/guides/installation.md)
 - [Quick Start Guide](./docs/guides/quickstart.md)
+- [Deployment Guide](./docs/guides/deployment.md)
 - [Configuration Overview](./docs/guides/configuration.md)
 
 ### 🔧 Configuration
-- [TypeScript Config System](./docs/guides/typescript-config.md)
-- [Strict Types & Autocomplete](./docs/guides/strict-types.md)
+- [Configuration Guide](./docs/guides/configuration.md)
+- [Textual IRC Client Setup](./docs/guides/clients/textual.md)
+- [The Lounge Client Setup](./docs/guides/clients/thelounge.md)
 - [Host Metadata Overrides](./docs/guides/host-metadata.md)
+- [CLI Tools](./docs/guides/cli.md)
 
 ### 🏗️ Architecture
 - [System Architecture](./docs/architecture/overview.md)
@@ -107,9 +110,18 @@ See [Quick Start Guide](./docs/guides/quickstart.md) for detailed setup.
 - [Type System](./docs/architecture/type-system.md)
 
 ### 📖 API Reference
-- [ConfigIO](./docs/api/config-io.md)
-- [Config API](./docs/api/config-api.md)
-- [FilterEngine](./docs/api/filter-engine.md)
+
+#### API Server (HTTP)
+- [Config API](./docs/api-server/config-api.md) - HTTP configuration management
+- [Root Config API](./docs/api-server/root-config.md) - Root configuration endpoint
+- [Data Flow API](./docs/api-server/data-flow.md) - Data flow visualization
+- [Logs API](./docs/api-server/logs-api.md) - Log file exploration with chunking/compression
+- [API Type Reference](./docs/api-server/type-reference.ts) - Response types
+
+#### Core APIs (Internal)
+- [ConfigIO](./docs/core-apis/config-io.md) - Import/export utilities
+- [FilterEngine](./docs/core-apis/filter-engine.md) - Filter evaluation
+- [TemplateEngine](./docs/core-apis/template-engine.md) - Template processing
 
 ### 🛠️ CLI
 - [Command Line Interface](./docs/guides/cli.md)
@@ -121,73 +133,60 @@ See [Quick Start Guide](./docs/guides/quickstart.md) for detailed setup.
 ## Example Configuration
 
 ### Main Config
-```typescript
-// config/config.ts
-import { defineStrictConfig } from '../src/config/strict-types';
-
-export default defineStrictConfig({
-  global: {
-    pollInterval: 1000,
-    debug: false,
-    defaultLogDirectory: "../logs",
-    configDirectory: "."
+```json
+{
+  "global": {
+    "pollInterval": 1000,
+    "debug": false,
+    "defaultLogDirectory": "../logs",
+    "configDirectory": "."
   },
-  api: {
-    enabled: true,
-    port: 3000,
-    host: "0.0.0.0",
-    authToken: "your-secret-token",
-    enableFileOps: true
-  },
-  clients: ["textual"],
-  servers: ["libera"],
-  events: ["phrase-alert"],
-  sinks: ["console", "ntfy"]
-});
+  "api": {
+    "enabled": true,
+    "port": 3000,
+    "host": "0.0.0.0",
+    "enableFileOps": true
+  }
+}
 ```
 
-### Event with Filters
-```typescript
-// config/events/phrase-alert.ts
-import { defineStrictEvent } from '../../../src/config/strict-types';
+Note: Client, server, event, and sink IDs are auto-discovered from their respective directories.
 
-export default defineStrictEvent({
-  sinks: { 'ntfy': 'ntfy', 'console': 'console' }
-})({
-  id: "phrase-alert",
-  name: "Phrase Alert",
-  enabled: true,
-  baseEvent: "message",
-  serverIds: ["*"],
-  priority: 90,
-  
-  filters: {
-    operator: "OR",
-    filters: [
+### Event with Filters (Current Schema)
+```json
+{
+  "id": "phrase-alert",
+  "name": "Phrase Alert",
+  "enabled": true,
+  "baseEvent": "message",
+  "serverIds": ["*"],
+  "priority": 90,
+  "group": "alerts",
+  "filters": {
+    "operator": "OR",
+    "filters": [
       {
-        field: "message.content",
-        operator: "contains",
-        value: "my-nickname"
+        "field": "message.content",
+        "operator": "contains",
+        "value": "my-nickname"
       },
       {
-        field: "message.content",
-        operator: "matches",
-        pattern: "@my-nickname\\b"
+        "field": "message.content",
+        "operator": "matches",
+        "pattern": "@my-nickname\\b"
       }
     ]
   },
-  
-  sinkIds: ["console", "ntfy"],
-  
-  metadata: {
-    sink: {
-      ntfy: {
-        priority: "high",
-        tags: ["bell", "speech_balloon"]
+  "sinkIds": ["console", "ntfy"],
+  "metadata": {
+    "sink": {
+      "ntfy": {
+        "priority": "high",
+        "tags": ["bell", "speech_balloon"]
       }
     }
   }
-});
+}
 ```
 
 ## Configuration API
@@ -195,19 +194,15 @@ export default defineStrictEvent({
 The optional Config API server provides HTTP endpoints for runtime configuration management. Enable it via config file or environment variables.
 
 ### Config File (Recommended)
-```typescript
-// config/config.ts
-import { defineConfig } from '../src/config/types';
-
-export default defineConfig({
-  api: {
-    enabled: true,           // Enable the API server
-    port: 3000,             // Port to listen on
-    host: "0.0.0.0",        // Host to bind to
-    enableFileOps: true     // Allow direct file operations
-  },
-  // ... rest of config
-});
+```json
+{
+  "api": {
+    "enabled": true,
+    "port": 3000,
+    "host": "0.0.0.0",
+    "enableFileOps": true
+  }
+}
 ```
 
 ### Authentication
@@ -238,7 +233,7 @@ API_TOKEN=custom-token     # Override auto-generated token (not recommended)
 API_ENABLE_FILE_OPS=false  # Disable file ops (overrides config)
 ```
 
-See [Config API Documentation](./docs/api/config-api.md) for endpoints and usage.
+See [Config API Documentation](./docs/api-server/config-api.md) for endpoints and usage.
 
 ## CLI Commands
 
@@ -252,7 +247,6 @@ bun run config:validate       # Validate configs
 bun run config:export         # Export to bundle
 bun run config:import         # Import from bundle
 bun run config:merge          # Merge configs
-bun run config:migrate        # JSON → TypeScript
 
 # Development testing
 bun run dev:gen               # Generate test data
@@ -281,6 +275,13 @@ Releases follow semantic versioning (`MAJOR.MINOR.PATCH`). A dedicated **Release
 Trigger the workflow from GitHub UI: Actions → Release → Run workflow (provide version input).
 
 See [Releases Guide](./docs/guides/releases.md) for full details & manual fallback.
+
+### Important Changes in v1.0.0
+- Status API (`GET /api/status`) now returns a flattened object (removed nested `status` property)
+- Events expose `serverIds`, `sinkIds`, `baseEvent`, `priority` (removed legacy `clientId`/`serverId` single refs)
+- Config validation auto-prunes invalid `serverIds`/`sinkIds` and persists sanitized files
+- Webhook sink headers are sanitized (non-ASCII removed); place Unicode/emoji in body content
+- Data Flow API includes disabled components in `routingPaths` (each path has `enabled` flag)
 
 ## Architecture
 
@@ -356,7 +357,7 @@ See [Development Guide](./docs/guides/development.md) for extending sinks.
 
 - **Runtime**: [Bun](https://bun.sh) v1.0+
 - **Language**: TypeScript
-- **Config Format**: TypeScript (with JSON fallback)
+- **Config Format**: JSON
 - **File Monitoring**: Node.js `fs` module (polling)
 - **Pattern Matching**: Regular expressions
 - **Template Engine**: Custom `{{field.path}}` syntax
@@ -365,7 +366,7 @@ See [Development Guide](./docs/guides/development.md) for extending sinks.
 
 - Bun v1.0 or higher
 - IRC client logs (Textual, TheLounge, or similar)
-- Basic TypeScript/JSON knowledge
+- Basic JSON knowledge
 
 ## Docker Deployment
 
@@ -414,13 +415,13 @@ bun run format:check   # Verify formatting (CI)
 CI enforces formatting on pull requests (`Format & Lint` workflow). Adjust rules in `biome.json`.
 
 See docs/guides/testing.md for details.
-```
+
 
 ## Project Structure
 
 ```
 irc-notify/
-├── config/                  # TypeScript configs
+├── config/                  # JSON configs
 │   ├── config.ts            # Main config
 │   ├── clients/             # Client adapters
 │   ├── servers/             # Server metadata

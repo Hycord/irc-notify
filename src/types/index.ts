@@ -139,7 +139,7 @@ export interface FilterGroup {
  */
 export interface ClientConfig {
   id: string;
-  type: string;
+  type?: string; // Deprecated: use id instead
   name: string;
   enabled: boolean;
   logDirectory: string;
@@ -168,7 +168,10 @@ export interface ClientConfig {
     hostnamePattern?: string;
     hostnameGroup?: number;
     jsonPath?: string;
+    arrayPath?: string; // Path to extract array from nested JSON structure
     hostnameField?: string;
+    uuidField?: string; // Field containing UUID for path matching
+    nameField?: string; // Field containing network/server name
     query?: string;
     hostnameColumn?: string;
   };
@@ -223,12 +226,49 @@ export interface EventConfig {
   filters?: FilterGroup;
   sinkIds: string[];
   priority?: number;
+  group?: string;
   metadata?: Record<string, any>;
 }
 
 /**
  * Sink configuration - loaded from config/sinks/<id>.json
  */
+/**
+ * Payload transformation rule for webhook sinks
+ * Similar to ParserRule but for building request payloads
+ */
+export interface PayloadTransform {
+  /** Name of the transformation (e.g., "discord", "slack", "ntfy") */
+  name: string;
+
+  /** Content-Type header to use */
+  contentType?: string;
+
+  /** HTTP method override (if different from sink config) */
+  method?: string;
+
+  /** Custom headers to add/override */
+  headers?: Record<string, string | { template: string }>;
+
+  /** Body format - determines how the body is constructed */
+  bodyFormat: "json" | "text" | "form" | "custom";
+
+  /** Template for JSON body (if bodyFormat is "json") */
+  jsonTemplate?: Record<string, any>;
+
+  /** Template for text body (if bodyFormat is "text") */
+  textTemplate?: string;
+
+  /** Template for form data (if bodyFormat is "form") */
+  formTemplate?: Record<string, string>;
+
+  /** Priority for matching (higher = checked first) */
+  priority?: number;
+
+  /** Condition to apply this transform (optional filter) */
+  condition?: FilterConfig | FilterGroup;
+}
+
 export interface SinkConfig {
   id: string;
   type: "ntfy" | "webhook" | "console" | "file" | "custom";
@@ -246,6 +286,9 @@ export interface SinkConfig {
   };
   allowedMetadata?: string[];
   metadata?: Record<string, any>;
+
+  /** Payload transformation rules (for webhook sinks) */
+  payloadTransforms?: PayloadTransform[];
 }
 
 /**
@@ -269,11 +312,12 @@ export interface IRCNotifyConfig {
     enableFileOps?: boolean;
   };
 
-  // References to config files (IDs or paths)
-  clients: string[];
-  servers: string[];
-  events: string[];
-  sinks: string[];
+  // Optional: References to config files (IDs or paths)
+  // If not provided or empty, all configs will be auto-discovered from config directories
+  clients?: string[];
+  servers?: string[];
+  events?: string[];
+  sinks?: string[];
 }
 
 /**
@@ -285,6 +329,9 @@ export interface ClientAdapter {
 
   /** Discover IRC servers from log directory */
   discoverServers(): Promise<Array<{ hostname: string; metadata?: Record<string, any> }>>;
+
+  /** Get the list of servers discovered by this client */
+  getDiscoveredServers(): Array<{ hostname: string; metadata?: Record<string, any> }>;
 
   /** Parse a single log line into a MessageContext */
   parseLine(line: string, context: Partial<MessageContext>): MessageContext | null;

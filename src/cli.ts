@@ -5,7 +5,7 @@
 
 import { ConfigIO } from "./config/import-export";
 import { ConfigLoader } from "./config/loader";
-import { migrateToTypeScript } from "./config/migrate";
+import { migrateToJson } from "./config/migrate";
 import { cleanupDevData, generateDevData } from "./dev";
 
 // Parse command line arguments
@@ -42,7 +42,7 @@ Commands:
   validate            Validate configuration
     -c, --config      Config file to validate (default: auto-detect)
 
-  migrate             Migrate JSON configs to TypeScript
+  migrate:json        Migrate TypeScript configs to JSON
     -d, --dir         Config directory (default: ./config)
 
   gen-dev             Generate development test data
@@ -56,7 +56,7 @@ Examples:
   bun src/cli.ts import -i backup.json.gz --reload
   bun src/cli.ts merge -i new-config.json.gz --overwrite
   bun src/cli.ts validate
-  bun src/cli.ts migrate
+  bun src/cli.ts migrate:json
   bun src/cli.ts gen-dev -n 500
   bun src/cli.ts cleanup-dev
 `);
@@ -205,9 +205,9 @@ async function main() {
         break;
       }
 
-      case "migrate": {
+      case "migrate:json": {
         const configDir = ((options.d || options.dir) as string) || "./config";
-        await migrateToTypeScript({ configDir });
+        await migrateToJson({ configDir });
         break;
       }
 

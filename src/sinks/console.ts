@@ -23,6 +23,7 @@ export class ConsoleSink extends BaseSink {
           {
             sink: this.config.id,
             event: event.name,
+            group: event.group,
             title,
             body,
             context,
@@ -47,6 +48,9 @@ export class ConsoleSink extends BaseSink {
       }
       if (context.server.displayName) {
         console.log(`Server: ${context.server.displayName}`);
+      }
+      if (event.group) {
+        console.log(`Group: ${event.group}`);
       }
       console.log("═══════════════════════════════════════");
     }

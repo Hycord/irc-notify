@@ -275,6 +275,12 @@ Enriched `MessageContext` with complete server and user data
 
 **Component**: `EventProcessor.processMessage()`
 
+### Disabled Component Drop
+
+- After enrichment, if the matched server exists but is disabled, the message is dropped immediately (no events are evaluated).
+- If an event matches but any referenced sink is disabled, the entire event is dropped (no sinks receive it).
+- A disabled client never produces messages (watchers are not started), and disabled events are excluded from matching.
+
 ### Event Filtering
 ```typescript
 // Filter to enabled events, sorted by priority

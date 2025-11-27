@@ -2,45 +2,92 @@
 
 This guide provides a comprehensive overview of the IRC Notify configuration system.
 
+## Quick Start
+
+**Auto-Discovery Mode** (Recommended): Omit the config arrays to automatically discover all configs:
+
+```json
+{
+  "global": {
+    "defaultLogDirectory": "../logs",
+    "pollInterval": 1000,
+    "debug": false
+  }
+}
+```
+
+All JSON files in `config/clients/`, `config/servers/`, `config/events/`, and `config/sinks/` are automatically discovered.
+
+**Explicit Mode**: Optionally specify exactly which configs to load:
+
+```json
+{
+  "global": {
+    "defaultLogDirectory": "../logs",
+    "pollInterval": 1000,
+    "debug": false
+  },
+  "clients": ["textual", "thelounge"],
+  "servers": ["libera", "orpheus"],
+  "events": ["phrase-alert"],
+  "sinks": ["ntfy", "console"]
+}
+```
+
+**Enabled Field**: Every config has an `enabled` boolean field:
+- Configs with `enabled: false` are **loaded** but **not initialized**
+- Use this to temporarily disable configs without deleting files
+- Disabled configs still undergo validation but are skipped during runtime
+
 ## Configuration Structure
 
 IRC Notify uses a hierarchical configuration system with five main components:
 
 ```
 config/                      # All configuration lives here
-  config.ts                  # Main config (references other configs by ID)
+  config.json                # Main config (optional - auto-discovers)
   clients/                   # IRC client log adapters
-    *.ts
+    *.json
   servers/                   # Server metadata and users
-    *.ts
+    *.json
   events/                    # Event matching rules
-    *.ts
+    *.json
   sinks/                     # Notification destinations
-    *.ts
+    *.json
 ```
 
 ## Main Configuration
 
-**File**: `config/config.ts` or `config.json`
+**File**: `config/config.json`
 
-Defines global settings and references all other configs by ID.
+Defines global settings. Individual configs are automatically discovered from their directories.
 
-```typescript
-import { defineStrictConfig } from '../src/config/strict-types';
+```json
+{
+  "global": {
+    "pollInterval": 1000,
+    "debug": false,
+    "defaultLogDirectory": "./logs",
+    "configDirectory": ".",
+    "rescanLogsOnStartup": false
+  }
+}
+```
 
-export default defineStrictConfig({
-  global: {
-    pollInterval: 1000,           // File poll interval (ms)
-    debug: false,                 // Enable debug logging
-    defaultLogDirectory: "./logs", // Default log directory
-    configDirectory: ".",          // Config directory path
-    rescanLogsOnStartup: false    // Rescan logs on startup
+**Optional**: You can explicitly list config IDs if you want to control which configs are loaded:
+
+```json
+{
+  "global": {
+    "pollInterval": 1000,
+    "debug": false,
+    "defaultLogDirectory": "./logs"
   },
-  clients: ["textual", "thelounge"],      // Client config IDs
-  servers: ["libera", "oftc", "orpheus"], // Server config IDs
-  events: ["phrase-alert", "dm-alert"],   // Event config IDs
-  sinks: ["console", "ntfy", "webhook"]   // Sink config IDs
-});
+  "clients": ["textual", "thelounge"],
+  "servers": ["libera", "oftc", "orpheus"],
+  "events": ["phrase-alert", "dm-alert"],
+  "sinks": ["console", "ntfy", "webhook"]
+}
 ```
 
 ### Global Settings
@@ -57,10 +104,10 @@ export default defineStrictConfig({
 
 Each array contains IDs referencing config files:
 
-- **`clients`** - References files in `config/clients/<id>.ts`
-- **`servers`** - References files in `config/servers/<id>.ts`
-- **`events`** - References files in `config/events/<id>.ts`
-- **`sinks`** - References files in `config/sinks/<id>.ts`
+- **`clients`** - References files in `config/clients/<id>.json`
+- **`servers`** - References files in `config/servers/<id>.json`
+- **`events`** - References files in `config/events/<id>.json`
+- **`sinks`** - References files in `config/sinks/<id>.json`
 
 **Important**: IDs must match the actual config file IDs. Cross-references are validated at load time.
 
@@ -68,71 +115,63 @@ Each array contains IDs referencing config files:
 
 The system looks for config files in this order:
 
-1. `config/config.ts` (TypeScript in subdirectory) ✓ **Preferred**
-2. `config.ts` (TypeScript in root)
-3. `config/config.json` (JSON in subdirectory)
-4. `config.json` (JSON in root)
-5. `config.dev.json` (Dev override)
+1. `config/config.json` (in subdirectory) ✓ **Preferred**
+2. `config.json` (in root directory)
+3. `config.dev.json` (development override)
 
 **Custom path**:
 ```bash
-bun start -c /path/to/config.ts
+bun start -c /path/to/config.json
 ```
 
 ## Client Configuration
 
-**File**: `config/clients/<id>.ts`
+**File**: `config/clients/<id>.json`
 
 Defines how to discover and parse log files from IRC clients.
 
-```typescript
-import { defineClient } from '../../src/config/types';
-
-export default defineClient({
-  id: "textual",
-  type: "textual",
-  name: "Textual IRC Client",
-  enabled: true,
-  logDirectory: "../logs/textual",
-  
-  discovery: {
-    patterns: {
-      console: "**/Console/*.txt",
-      channels: "**/Channels/**/*.txt",
-      queries: "**/Queries/**/*.txt"
+```json
+{
+  "id": "textual",
+  "type": "textual",
+  "name": "Textual IRC Client",
+  "enabled": true,
+  "logDirectory": "../logs/textual",
+  "discovery": {
+    "patterns": {
+      "console": "**/Console/*.txt",
+      "channels": "**/Channels/**/*.txt",
+      "queries": "**/Queries/**/*.txt"
     },
-    pathExtraction: {
-      serverPattern: "/([^/]+)\\s*\\([A-F0-9]+\\)/",
-      serverGroup: 1,
-      channelPattern: "/(?:Channels|Queries)/([^/]+)/",
-      channelGroup: 1
+    "pathExtraction": {
+      "serverPattern": "/([^/]+)\\s*\\([A-F0-9]+\\)/",
+      "serverGroup": 1,
+      "channelPattern": "/(?:Channels|Queries)/([^/]+)/",
+      "channelGroup": 1
     }
   },
-
-  serverDiscovery: {
-    type: "static",
-    servers: []
+  "serverDiscovery": {
+    "type": "static",
+    "servers": []
   },
-
-  fileType: {
-    type: "text",
-    encoding: "utf-8"
+  "fileType": {
+    "type": "text",
+    "encoding": "utf-8"
   },
-
-  parserRules: [
+  "parserRules": [
     {
-      name: "privmsg",
-      priority: 100,
-      pattern: "^\\[(\\d{2}:\\d{2}:\\d{2})\\]\\s*<([^>]+)>\\s*(.+)$",
-      messageType: "privmsg",
-      groups: {
-        timestamp: 1,
-        sender: 2,
-        content: 3
+      "name": "privmsg",
+      "priority": 100,
+      "pattern": "^\\[(\\d{2}:\\d{2}:\\d{2})\\]\\s*<([^>]+)>\\s*(.+)$",
+      "messageType": "privmsg",
+      "groups": {
+        "timestamp": 1,
+        "sender": 2,
+        "content": 3
       }
     }
   ]
-});
+}
 ```
 
 **Key fields**:
@@ -145,39 +184,35 @@ See [Type System Documentation](../architecture/type-system.md) for complete cli
 
 ## Server Configuration
 
-**File**: `config/servers/<id>.ts`
+**File**: `config/servers/<id>.json`
 
 Defines server metadata and known users.
 
-```typescript
-import { defineServer } from '../../src/config/types';
-
-export default defineServer({
-  id: "libera",
-  hostname: "irc.libera.chat",
-  displayName: "Libera",
-  network: "Libera.Chat",
-  port: 6697,
-  tls: true,
-  enabled: true,
-  
-  users: {
+```json
+{
+  "id": "libera",
+  "hostname": "irc.libera.chat",
+  "displayName": "Libera",
+  "network": "Libera.Chat",
+  "port": 6697,
+  "tls": true,
+  "enabled": true,
+  "users": {
     "alice": {
-      nickname: "alice",
-      username: "~alice",
-      hostname: "user/alice",
-      realName: "Alice Smith",
-      metadata: {
-        role: "admin"
+      "nickname": "alice",
+      "username": "~alice",
+      "hostname": "user/alice",
+      "realName": "Alice Smith",
+      "metadata": {
+        "role": "admin"
       }
     }
   },
-  
-  metadata: {
-    timezone: "UTC",
-    region: "US"
+  "metadata": {
+    "timezone": "UTC",
+    "region": "US"
   }
-});
+}
 ```
 
 **Key fields**:
@@ -191,54 +226,48 @@ See [Type System Documentation](../architecture/type-system.md) for complete ref
 
 ## Event Configuration
 
-**File**: `config/events/<id>.ts`
+**File**: `config/events/<id>.json`
 
 Defines filter rules for matching messages and routing to sinks.
 
-```typescript
-import { defineStrictEvent } from '../../src/config/strict-types';
-
-export default defineStrictEvent({
-  sinks: { 'ntfy': 'ntfy', 'console': 'console' }
-})({
-  id: "phrase-alert",
-  name: "Phrase Alert",
-  enabled: true,
-  baseEvent: "message",
-  serverIds: ["*"],
-  priority: 90,
-  
-  filters: {
-    operator: "OR",
-    filters: [
+```json
+{
+  "id": "phrase-alert",
+  "name": "Phrase Alert",
+  "enabled": true,
+  "baseEvent": "message",
+  "serverIds": ["*"],
+  "priority": 90,
+  "group": "alerts",
+  "filters": {
+    "operator": "OR",
+    "filters": [
       {
-        field: "message.content",
-        operator: "contains",
-        value: "{{metadata.clientNickname}}"
+        "field": "message.content",
+        "operator": "contains",
+        "value": "{{server.clientNickname}}"
       },
       {
-        field: "message.content",
-        operator: "matches",
-        pattern: "@{{metadata.clientNickname}}\\b"
+        "field": "message.content",
+        "operator": "matches",
+        "pattern": "@{{server.clientNickname}}\\b"
       }
     ]
   },
-  
-  sinkIds: ["ntfy", "console"],
-  
-  metadata: {
-    description: "Alert on mentions",
-    host: {
-      displayName: "{{server.displayName}} (Mentions)"
+  "sinkIds": ["ntfy", "console"],
+  "metadata": {
+    "description": "Alert on mentions",
+    "host": {
+      "displayName": "{{server.displayName}} (Mentions)"
     },
-    sink: {
-      ntfy: {
-        priority: "high",
-        tags: ["bell", "mention"]
+    "sink": {
+      "ntfy": {
+        "priority": "high",
+        "tags": ["bell", "mention"]
       }
     }
   }
-});
+}
 ```
 
 **Key fields**:
@@ -247,45 +276,69 @@ export default defineStrictEvent({
 - `filters` - Custom filter rules (AND/OR groups)
 - `sinkIds` - Sink IDs to send notifications to
 - `priority` - Processing priority (higher = first)
+- `group` - Optional group identifier (accessible via `{{event.group}}` in templates)
 - `metadata.sink` - Per-sink metadata overrides
+
+### Event Groups
+
+The optional `group` field allows you to categorize events for easier filtering and routing. The group is accessible in templates via `{{event.group}}`.
+
+**Example use cases**:
+```json
+// Categorize by event type
+{ "id": "bot-message", "group": "bots" }
+{ "id": "user-join", "group": "status" }
+{ "id": "phrase-alert", "group": "alerts" }
+
+// Use in filters to group similar events
+{
+  "filters": {
+    "field": "event.group",
+    "operator": "equals", 
+    "value": "alerts"
+  }
+}
+
+// Use in sink templates
+{
+  "template": {
+    "title": "[{{event.group}}] {{server.displayName}} - {{sender.nickname}}"
+  }
+}
+// Results in: "[alerts] Libera - Alice"
+```
 
 See [Type System Documentation](../architecture/type-system.md) for complete reference.
 
 ## Sink Configuration
 
-**File**: `config/sinks/<id>.ts`
+**File**: `config/sinks/<id>.json`
 
 Defines notification destinations and formatting.
 
-```typescript
-import { defineSink } from '../../src/config/types';
-
-export default defineSink({
-  id: "ntfy",
-  type: "ntfy",
-  name: "Ntfy Push Notifications",
-  enabled: true,
-  
-  config: {
-    endpoint: "${NTFY_ENDPOINT:-https://ntfy.sh}",
-    topic: "${NTFY_TOPIC}",
-    priority: "default",
-    tags: ["irc"]
+```json
+{
+  "id": "ntfy",
+  "type": "ntfy",
+  "name": "Ntfy Push Notifications",
+  "enabled": true,
+  "config": {
+    "endpoint": "${NTFY_ENDPOINT:-https://ntfy.sh}",
+    "topic": "${NTFY_TOPIC}",
+    "priority": "default",
+    "tags": ["irc"]
   },
-  
-  template: {
-    title: "[{{server.displayName}}] {{sender.nickname}}",
-    body: "{{message.content}}",
-    format: "text"
+  "template": {
+    "title": "[{{server.displayName}}] {{sender.nickname}}",
+    "body": "{{message.content}}",
+    "format": "text"
   },
-  
-  rateLimit: {
-    maxPerMinute: 10,
-    maxPerHour: 100
+  "rateLimit": {
+    "maxPerMinute": 10,
+    "maxPerHour": 100
   },
-  
-  allowedMetadata: ["priority", "tags", "headers"]
-});
+  "allowedMetadata": ["priority", "tags", "headers"]
+}
 ```
 
 **Key fields**:
@@ -318,17 +371,17 @@ bun run config:validate
 
 ### Cross-Reference Validation
 
-After loading, the system validates:
+After loading, the system validates and auto-fixes references:
 
-- ✓ Event `serverIds` reference existing servers
-- ✓ Event `sinkIds` reference existing sinks
+- ✓ Event `serverIds` reference existing servers (invalid IDs are removed; `'*'` is allowed)
+- ✓ Event `sinkIds` reference existing sinks (invalid IDs are removed)
 - ✓ Event `metadata.sink` keys match existing sinks
 - ✓ Sink metadata keys are in `allowedMetadata`
 
-**Example error**:
-```
-[EventConfig:phrase-alert.serverIds] references non-existent server: invalid-id
-```
+Notes:
+- Missing server/sink IDs do not fail validation; they are pruned from the event.
+- Empty `serverIds`/`sinkIds` arrays are allowed and will simply result in no matches or no deliveries for that event.
+- When pruning occurs, the corrected `events/<id>.json` file is automatically saved so on-disk configs stay consistent.
 
 ### Runtime Validation
 
@@ -406,63 +459,43 @@ All string configs support `{{field.path}}` syntax:
 }
 ```
 
+**Templates work everywhere** - All string values are processed recursively, including:
+- Sink template configs (`template.title`, `template.body`)
+- Event metadata (all nested fields including `metadata.sink.*`)
+- Filter values and patterns
+- Array elements in filter values
+
+**Example of deep template processing**:
+```typescript
+{
+  metadata: {
+    sink: {
+      ntfy: {
+        title: "Message from {{sender.nickname}}",  // ✓ Processed
+        tags: ["user:{{sender.nickname}}"],         // ✓ Array elements processed
+      }
+    },
+    customField: "Server: {{server.displayName}}"   // ✓ Any metadata field
+  }
+}
+```
+
 **Accesses `MessageContext` fields**:
 - `{{message.content}}` - Message text
 - `{{sender.nickname}}` - Sender's nickname
 - `{{target.name}}` - Channel or query name
 - `{{server.displayName}}` - Server display name
+- `{{server.clientNickname}}` - Your nickname on the server
+- `{{event.group}}` - Event group (if set in event config)
+- `{{event.id}}` - Event ID
+- `{{event.name}}` - Event name
 - `{{metadata.customField}}` - Custom metadata
 
 See [Type System Documentation](../architecture/type-system.md) and [Data Flow](../architecture/data-flow.md) for complete reference.
 
-## Configuration Helpers
-
-### Standard Helpers
-
-Available for basic validation:
-
-```typescript
-defineConfig(config)   // Main config
-defineClient(config)   // Client config
-defineServer(config)   // Server config
-defineEvent(config)    // Event config
-defineSink(config)     // Sink config
-```
-
-### Strict Helpers
-
-Available for compile-time validation:
-
-```typescript
-defineStrictConfig(config)  // Prevents duplicate keys
-defineStrictEvent({         // Validates sink metadata
-  sinks: { 'ntfy': 'ntfy' }
-})({ /* event config */ })
-```
-
-**Benefits**:
-- ✓ TypeScript error on duplicate keys
-- ✓ Autocomplete for sink metadata
-- ✓ Compile-time validation
-
-See [Strict Types Guide](./strict-types.md) for complete reference.
-
 ## Configuration Registry
 
-TypeScript configs auto-register during module load:
-
-```typescript
-// config/servers/libera.ts
-export default defineServer({
-  id: "libera",
-  // ... config
-}); // ← Automatically calls ConfigRegistry.registerServer()
-```
-
-**Benefits**:
-- ✓ Validate references during import
-- ✓ Catch errors before runtime
-- ✓ Enable strict types
+The configuration registry tracks all loaded configs and validates cross-references at runtime.
 
 **Load order** (enforced by `ConfigLoader`):
 1. Clients (no dependencies)
@@ -478,9 +511,9 @@ export default defineServer({
 ```
 config/
   servers/
-    libera.ts
-    oftc.ts
-    orpheus.ts
+    libera.json
+    oftc.json
+    orpheus.json
 ```
 
 **Related configs together**:
@@ -488,11 +521,11 @@ config/
 config/
   events/
     mentions/
-      phrase-alert.ts
-      direct-message.ts
+      phrase-alert.json
+      direct-message.json
     joins/
-      user-join.ts
-      user-quit.ts
+      user-join.json
+      user-quit.json
 ```
 
 ### Naming
@@ -505,11 +538,11 @@ id: "pa"                     // ✗ Ambiguous
 
 **Match file name to ID**:
 ```
-config/events/phrase-alert.ts  ✓
-  id: "phrase-alert"
+config/events/phrase-alert.json  ✓
+  { "id": "phrase-alert" }
 
-config/events/alert.ts         ✗
-  id: "phrase-alert"
+config/events/alert.json         ✗
+  { "id": "phrase-alert" }
 ```
 
 ### Documentation
@@ -559,6 +592,133 @@ bun start -c config.dev.ts
 bun run dev:cleanup
 ```
 
+## Auto-Discovery and Enabled Filtering
+
+### Auto-Discovery Behavior
+
+When config arrays are omitted in `config.json`, the system **automatically discovers** all config files:
+
+```json
+{
+  "global": {}
+}
+```
+
+// Auto-discovers all files:
+// - config/clients/*.json
+// - config/servers/*.json
+// - config/events/*.json
+// - config/sinks/*.json
+```
+
+**Discovery rules**:
+- Scans the respective directory (`config/clients/`, `config/servers/`, etc.)
+- Loads all `.ts` and `.json` files found
+- Extracts config ID from filename if not set in config
+- Validates all discovered configs
+
+**Explicit selection** (optional):
+```json
+{
+  "global": {},
+  "clients": ["textual"],
+  "servers": ["libera", "oftc"],
+  "events": ["phrase-alert"],
+  "sinks": ["ntfy"]
+}
+```
+// Only loads specified configs
+```
+
+### Enabled Field Behavior
+
+Every config type has an **`enabled: boolean`** field that controls runtime activation:
+
+```json
+{
+  "id": "textual",
+  "enabled": true,
+  "type": "textual"
+}
+```
+```
+
+**How `enabled` works**:
+
+1. **Loading Phase** (happens regardless of `enabled` value):
+   - Config file is discovered/loaded
+   - Validation runs (schema, cross-references)
+   - Config is registered in the system
+   - Counted in "loaded" statistics
+
+2. **Initialization Phase** (only if `enabled: true`):
+   - Clients: Adapter initialized, log watchers created
+   - Servers: Added to event processor's server map
+   - Events: Added to event processor's active event list
+   - Sinks: Sink initialized, notification delivery enabled
+
+3. **Runtime** (only enabled configs):
+   - Only enabled clients watch log files
+  - Only enabled servers match against events
+   - Only enabled events can trigger notifications
+   - Only enabled sinks receive notifications
+
+**Chain Drop Semantics**:
+
+- If a message path involves any disabled component, the event is dropped entirely.
+- Components considered: client, server, event, and every sink referenced by the event.
+- Examples:
+  - Client disabled → all messages from that client are dropped.
+  - Server disabled (matched by hostname/identifier) → messages enriched to that server are dropped before event matching.
+  - Event disabled → never matches.
+  - Any sink in `event.sinkIds` disabled → the entire event is dropped (no sinks receive it).
+
+**Example output** (with `debug: true`):
+```
+Loaded configuration from /path/to/config/config.ts
+  - 3 clients (2 enabled)
+  - 5 servers (4 enabled)
+  - 10 events (8 enabled)
+  - 4 sinks (3 enabled)
+Skipping disabled client: TheLounge (thelounge)
+EventProcessor: Filtered out 2 disabled events: old-alert, test-event
+EventProcessor: 1 servers are disabled: test-server
+Dropping message: matched disabled server 'libera' (Libera)
+```
+
+**Use cases for `enabled: false`**:
+- Temporarily disable configs without deleting files
+- Test different configurations without file management
+- Keep backup/alternative configs ready
+- Disable specific servers/events during maintenance
+
+### Server ID Wildcards
+
+Event `serverIds` supports wildcard matching:
+
+```json
+{
+  "id": "global-alert",
+  "serverIds": ["*"]
+}
+```
+// Matches ALL enabled servers
+```
+
+**Matching logic**:
+- `["*"]` - Matches all enabled servers
+- `["libera", "oftc"]` - Matches only these specific servers
+- `["*"]` ignores disabled servers (they're filtered before matching)
+
+**Debug output** (with `debug: true`):
+```
+Server filter check for event 'global-alert':
+  - serverIds: [*]
+  - context.server.id: libera
+  - matches wildcard (*): true
+  - matches specific server: false
+```
+
 ## Troubleshooting
 
 ### Config not found
@@ -567,7 +727,7 @@ bun run dev:cleanup
 
 **Solution**: Check file location and naming:
 ```bash
-ls config/config.ts  # Should exist
+ls config/config.json  # Should exist (or configs auto-discovered)
 ```
 
 ### Validation fails
@@ -575,10 +735,10 @@ ls config/config.ts  # Should exist
 **Error**: `[ClientConfig:textual.logDirectory] Missing required field`
 
 **Solution**: Add missing field:
-```typescript
+```json
 {
-  id: "textual",
-  logDirectory: "./logs/textual"  // Add this
+  "id": "textual",
+  "logDirectory": "./logs/textual"
 }
 ```
 
@@ -588,25 +748,15 @@ ls config/config.ts  # Should exist
 
 **Solution**: Check server ID matches file:
 ```bash
-ls config/servers/libera.ts  # Should exist
+ls config/servers/libera.json  # Should exist
 # And check ID inside matches:
-# export default defineServer({ id: "libera" })
-```
-
-### TypeScript errors
-
-**Error**: `Cannot find name 'defineClient'`
-
-**Solution**: Ensure preload is loaded:
-```typescript
-/// <reference types="../src/types/globals.d.ts" />
-import { defineClient } from '../../src/config/types';
+# { "id": "libera" }
 ```
 
 ## Related Documentation
 
-- [TypeScript Config System](./typescript-config.md)
-- [Strict Types Guide](./strict-types.md)
 - [Type System Reference](../architecture/type-system.md)
 - [Data Flow](../architecture/data-flow.md)
-- [CLI Reference](./cli.md)
+- [CLI Reference](../cli.md)
+- [Host Metadata](./host-metadata.md)
+- [Webhook Transforms](./webhook-transforms.md)

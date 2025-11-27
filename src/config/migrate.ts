@@ -1,5 +1,5 @@
 /**
- * Migration utilities for converting JSON configs to TypeScript
+ * Migration utilities for converting between JSON and TypeScript configs
  */
 
 import * as fs from "fs";
@@ -27,85 +27,100 @@ export interface MigrateResult {
 
 /**
  * Migrate JSON configs to TypeScript
+ * @deprecated This function is no longer supported. Configs are stored as JSON only.
+ * Use migrateToJson() to convert TypeScript configs to JSON.
  */
 export async function migrateToTypeScript(options: MigrateOptions = {}): Promise<MigrateResult> {
+  console.error("❌ Error: TypeScript config migration is no longer supported.");
+  console.error("   All configs are now stored as JSON only.");
+  console.error("   Use 'migrate:json' to convert TypeScript configs to JSON.");
+  return { converted: 0, skipped: 0, failed: 0 };
+}
+
+/**
+ * Migrate TypeScript configs to JSON (reverse migration)
+ */
+export async function migrateToJson(options: MigrateOptions = {}): Promise<MigrateResult> {
   const { configDir = "./config" } = options;
 
-  const categoryMap = {
-    clients: "defineClient",
-    servers: "defineServer",
-    events: "defineEvent",
-    sinks: "defineSink",
-  };
+  const categories = ["clients", "servers", "events", "sinks"];
 
-  function convertJsonToTs(jsonPath: string, category: keyof typeof categoryMap): boolean {
-    const tsPath = jsonPath.replace(".json", ".ts");
+  async function convertTsToJson(tsPath: string): Promise<boolean> {
+    const jsonPath = tsPath.replace(".ts", ".json");
 
-    // Skip if .ts already exists
-    if (fs.existsSync(tsPath)) {
-      console.log(`⏭️  Skipping ${path.basename(jsonPath)} (already has .ts version)`);
+    // Skip if .json already exists
+    if (fs.existsSync(jsonPath)) {
+      console.log(`⏭️  Skipping ${path.basename(tsPath)} (already has .json version)`);
       return false;
     }
 
     try {
-      // Read JSON
-      const content = fs.readFileSync(jsonPath, "utf-8");
-      const config = JSON.parse(content);
+      // Read the TS file
+      const content = fs.readFileSync(tsPath, "utf-8");
 
-      // Generate TS content
-      const defineFunc = categoryMap[category];
-      const tsContent = `export default ${defineFunc}(${JSON.stringify(config, null, 2)});\n`;
+      // Extract the JSON object from defineX(...) wrapper
+      // Pattern: export default defineX({...}); or export default defineX(...)
+      const match = content.match(/export\s+default\s+define\w+\s*\(\s*(\{[\s\S]*\})\s*\)/);
 
-      // Write TS file
-      fs.writeFileSync(tsPath, tsContent);
+      if (!match) {
+        throw new Error("Could not extract config object from TypeScript file");
+      }
 
-      // Delete JSON file
-      fs.unlinkSync(jsonPath);
+      // Parse the extracted JSON
+      const config = eval(`(${match[1]})`);
 
-      console.log(`✅ Converted ${path.basename(jsonPath)} -> ${path.basename(tsPath)}`);
+      // Write JSON file
+      fs.writeFileSync(jsonPath, JSON.stringify(config, null, 2) + "\n");
+
+      // Delete TS file
+      fs.unlinkSync(tsPath);
+
+      console.log(`✅ Converted ${path.basename(tsPath)} -> ${path.basename(jsonPath)}`);
       return true;
     } catch (error) {
-      console.error(`❌ Failed to convert ${jsonPath}:`, (error as Error).message);
+      console.error(`❌ Failed to convert ${tsPath}:`, (error as Error).message);
       return false;
     }
   }
 
-  function convertMainConfigToTs(jsonPath: string): boolean {
-    const tsPath = jsonPath.replace(".json", ".ts");
+  async function convertMainConfigTsToJson(tsPath: string): Promise<boolean> {
+    const jsonPath = tsPath.replace(".ts", ".json");
 
-    // Skip if .ts already exists
-    if (fs.existsSync(tsPath)) {
-      console.log(`⏭️  Skipping ${path.basename(jsonPath)} (already has .ts version)`);
+    // Skip if .json already exists
+    if (fs.existsSync(jsonPath)) {
+      console.log(`⏭️  Skipping ${path.basename(tsPath)} (already has .json version)`);
       return false;
     }
 
     try {
-      // Read JSON
-      const content = fs.readFileSync(jsonPath, "utf-8");
-      const config = JSON.parse(content);
+      // Read the TS file
+      const content = fs.readFileSync(tsPath, "utf-8");
 
-      // Determine import path based on location
-      const isInConfigDir = jsonPath.includes("config/config.json");
-      const importPath = isInConfigDir ? "../src/config/types" : "./src/config/types";
+      // Extract the JSON object from defineConfig(...) wrapper
+      const match = content.match(/export\s+default\s+defineConfig\s*\(\s*(\{[\s\S]*\})\s*\)/);
 
-      // Generate TS content with proper import
-      const tsContent = `import { defineConfig } from '${importPath}';\n\nexport default defineConfig(${JSON.stringify(config, null, 2)});\n`;
+      if (!match) {
+        throw new Error("Could not extract config object from TypeScript file");
+      }
 
-      // Write TS file
-      fs.writeFileSync(tsPath, tsContent);
+      // Parse the extracted JSON
+      const config = eval(`(${match[1]})`);
 
-      // Delete JSON file
-      fs.unlinkSync(jsonPath);
+      // Write JSON file
+      fs.writeFileSync(jsonPath, JSON.stringify(config, null, 2) + "\n");
 
-      console.log(`✅ Converted ${path.basename(jsonPath)} -> ${path.basename(tsPath)}`);
+      // Delete TS file
+      fs.unlinkSync(tsPath);
+
+      console.log(`✅ Converted ${path.basename(tsPath)} -> ${path.basename(jsonPath)}`);
       return true;
     } catch (error) {
-      console.error(`❌ Failed to convert ${jsonPath}:`, (error as Error).message);
+      console.error(`❌ Failed to convert ${tsPath}:`, (error as Error).message);
       return false;
     }
   }
 
-  console.log("🔄 Converting JSON configs to TypeScript...\n");
+  console.log("🔄 Converting TypeScript configs to JSON...\n");
 
   let converted = 0;
   let skipped = 0;
@@ -113,12 +128,12 @@ export async function migrateToTypeScript(options: MigrateOptions = {}): Promise
 
   // Process main config files (root level and config/ directory)
   console.log("\n📄 Main Config Files");
-  const mainConfigCandidates = ["config.json", "config/config.json"];
+  const mainConfigCandidates = ["config.ts", "config/config.ts"];
 
   for (const candidate of mainConfigCandidates) {
     if (fs.existsSync(candidate)) {
       try {
-        const result = convertMainConfigToTs(candidate);
+        const result = await convertMainConfigTsToJson(candidate);
         if (result) {
           converted++;
         } else {
@@ -132,7 +147,7 @@ export async function migrateToTypeScript(options: MigrateOptions = {}): Promise
   }
 
   // Process each category
-  for (const [category, _] of Object.entries(categoryMap)) {
+  for (const category of categories) {
     const categoryDir = path.join(configDir, category);
 
     if (!fs.existsSync(categoryDir)) {
@@ -141,17 +156,17 @@ export async function migrateToTypeScript(options: MigrateOptions = {}): Promise
 
     console.log(`\n📁 ${category}/`);
 
-    const files = fs.readdirSync(categoryDir).filter((f) => f.endsWith(".json"));
+    const files = fs.readdirSync(categoryDir).filter((f) => f.endsWith(".ts"));
 
     if (files.length === 0) {
-      console.log("  No JSON files found");
+      console.log("  No TypeScript files found");
       continue;
     }
 
     for (const file of files) {
-      const jsonPath = path.join(categoryDir, file);
+      const tsPath = path.join(categoryDir, file);
       try {
-        const result = convertJsonToTs(jsonPath, category as keyof typeof categoryMap);
+        const result = await convertTsToJson(tsPath);
 
         if (result) {
           converted++;

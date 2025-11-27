@@ -1,36 +1,37 @@
-# TypeScript Configuration System
+# Configuration System
 
 ## Overview
 
-The IRC Notify configuration system has been migrated from JSON to TypeScript with rigorous type checking and validation. The system supports both `.ts` and `.json` config files.
+IRC Notify uses a JSON-based configuration system with comprehensive validation. All configuration files are stored as JSON for portability and simplicity.
 
 ## Key Features
 
-✅ **Strong Type Safety** - All configs validated with TypeScript types at load time
-✅ **Rigorous Validation** - Comprehensive validation with detailed error messages  
+✅ **JSON-Based** - Simple, portable configuration files
+✅ **Strong Validation** - Comprehensive validation with detailed error messages  
 ✅ **Import/Export** - Bundle configs to compressed `.json.gz` files
 ✅ **Merge Functionality** - Intelligently merge config bundles (prefers existing data by default)
-✅ **Auto-Cleanup** - Automatically removes duplicate `.json` files when `.ts` exists
-✅ **Backwards Compatible** - Still loads `.json` files if needed
+✅ **Auto-Discovery** - Automatically discovers configs in directories (no need to list IDs in main config)
 
 ## Configuration Structure
 
 ```
 config/                      # All configuration lives here
-  config.ts                  # Main config
+  config.json                # Main config
   clients/
-    textual.ts
+    textual.json
+    thelounge.json
   servers/
-    libera.ts
-    mam.ts
-    orpheus.ts
+    libera.json
+    mam.json
+    orpheus.json
   events/
-    phrase-alert.ts
-    bot-message.ts
+    phrase-alert.json
+    bot-message.json
     ...
   sinks/
-    ntfy.ts
-    console.ts
+    ntfy.json
+    console.json
+    discord.json
     ...
 ```
 
@@ -40,7 +41,7 @@ config/                      # All configuration lives here
 ```bash
 bun src/cli.ts validate
 # or with custom config
-bun src/cli.ts validate -c config.ts
+bun src/cli.ts validate -c config.json
 # or via npm script
 bun run config:validate
 ```
@@ -71,19 +72,17 @@ bun src/cli.ts merge -i new-config.json.gz --overwrite
 bun run config:merge -- -i new-config.json.gz
 ```
 
-## TypeScript Config Example
+## JSON Config Example
 
-```typescript
-import { defineEvent } from '../../src/config/types';
-
-export default defineEvent({
+```json
+{
   "id": "phrase-alert",
   "name": "Phrase Alert",
   "enabled": true,
   "baseEvent": "any",
   "serverIds": ["*"],
   "priority": 95,
-  
+  "group": "alerts",
   "filters": {
     "operator": "AND",
     "filters": [
@@ -94,9 +93,7 @@ export default defineEvent({
       }
     ]
   },
-  
   "sinkIds": ["console", "ntfy"],
-  
   "metadata": {
     "description": "Triggers when a specific phrase is found",
     "sink": {
@@ -106,7 +103,7 @@ export default defineEvent({
       }
     }
   }
-});
+}
 ```
 
 ## Validation Features
@@ -128,19 +125,25 @@ Must be one of: equals, notEquals, contains, notContains, matches,
 notMatches, exists, notExists, in, notIn
 ```
 
-## Migration Script
+## Auto-Discovery
 
-To convert remaining JSON files to TypeScript:
+The system automatically discovers configuration files in each directory. You don't need to list config IDs in the main config file:
 
-```bash
-bun migrate-to-ts.ts
+```json
+{
+  "global": {
+    "defaultLogDirectory": "../logs",
+    "pollInterval": 1000,
+    "debug": false
+  },
+  "api": {
+    "enabled": true,
+    "port": 3001
+  }
+}
 ```
 
-This will:
-1. Find all `.json` config files
-2. Convert them to `.ts` with proper imports
-3. Apply validation wrappers (`defineClient`, `defineServer`, etc.)
-4. Delete the original `.json` files
+All JSON files in `config/clients/`, `config/servers/`, `config/events/`, and `config/sinks/` are automatically loaded based on their filenames.
 
 ## Import/Export Workflow
 
@@ -172,22 +175,17 @@ By default, `merge` prefers existing data (stale data):
 
 All items are indexed by their `id` field.
 
-## Type Definitions
+## Configuration Types
 
-All types are in `src/types/index.ts`:
-- `IRCNotifyConfig` - Main config
-- `ClientConfig` - IRC client adapter config
-- `ServerConfig` - Server metadata
-- `EventConfig` - Event matching rules
-- `SinkConfig` - Notification destinations
-- `FilterConfig` / `FilterGroup` - Message filtering
+All configuration schemas are defined in `src/types/index.ts`:
+- `IRCNotifyConfig` - Main configuration
+- `ClientConfig` - IRC client adapter configuration  
+- `ServerConfig` - Server metadata and user information
+- `EventConfig` - Event matching rules and filters
+- `SinkConfig` - Notification destination settings
+- `FilterConfig` / `FilterGroup` - Message filtering logic
 
-Validation helpers in `src/config/types.ts`:
-- `defineConfig()` - Main config wrapper
-- `defineClient()` - Client config wrapper
-- `defineServer()` - Server config wrapper
-- `defineEvent()` - Event config wrapper
-- `defineSink()` - Sink config wrapper
+The validator in `src/config/types.ts` provides comprehensive validation with detailed error messages for all configuration types.
 
 ## Environment Variables
 
@@ -195,11 +193,11 @@ Still supported via `${VAR}` syntax in config values (JSON or TS).
 
 ## File Resolution Order
 
-The system looks for config files in this order:
-1. `config/config.ts` (preferred - TypeScript in subdirectory)
-2. `config.ts` (TypeScript in root)
-3. `config/config.json` (JSON in subdirectory)
-4. `config.json` (JSON in root)
-5. `config.dev.json` (Dev override)
+The system looks for the main config file in this order:
+1. `config/config.json` (preferred - in subdirectory)
+2. `config.json` (in root directory)
+3. `config.dev.json` (development override)
 
-Custom path: `-c /path/to/config.ts`
+Custom path: `-c /path/to/config.json`
+
+Individual config files (clients, servers, events, sinks) are automatically discovered by scanning their respective directories.

@@ -2,6 +2,44 @@
 
 IRC Notify provides a comprehensive CLI for configuration management, validation, and development testing.
 
+## Helper Scripts
+
+### scripts/api-get.sh
+
+Simple bash script to send authenticated GET requests to the Config API.
+
+```bash
+# Basic usage
+./scripts/api-get.sh /api/health
+./scripts/api-get.sh /api/status
+
+# Config file operations
+./scripts/api-get.sh /api/config/files
+./scripts/api-get.sh /api/config/file/events/phrase-alert
+./scripts/api-get.sh /api/config/file/events/phrase-alert?format=ts
+
+# With curl options
+./scripts/api-get.sh /api/status -o status.json
+./scripts/api-get.sh /api/config/export | jq .
+```
+
+**Environment variables**:
+- `API_HOST` - API host (default: `localhost`)
+- `API_PORT` - API port (default: `3000`)
+- `AUTH_TOKEN_FILE` - Path to auth token file (default: `config/auth_token.txt`)
+
+**Examples**:
+```bash
+# Use custom API endpoint
+API_HOST=192.168.1.100 API_PORT=8080 ./scripts/api-get.sh /api/health
+
+# Pretty-print JSON
+./scripts/api-get.sh /api/status | jq .
+
+# Save to file
+./scripts/api-get.sh /api/config/file/events/my-event -o my-event.json
+```
+
 ## Basic Usage
 
 ```bash
@@ -45,11 +83,11 @@ Validate all configuration files without running the system.
 bun run config:validate
 
 # With custom config path
-bun src/cli.ts validate -c config/config.ts
+bun src/cli.ts validate -c config/config.json
 ```
 
 **What it validates**:
-- TypeScript/JSON syntax
+- JSON syntax
 - Required fields present
 - Field types correct
 - Regex patterns valid
@@ -86,7 +124,7 @@ bun run config:export
 bun run config:export -- -o backup-2025-11-24.json.gz
 
 # With custom config source
-bun src/cli.ts export -o backup.json.gz -c config/config.ts
+bun src/cli.ts export -o backup.json.gz -c config/config.json
 ```
 
 **Options**:
@@ -94,7 +132,7 @@ bun src/cli.ts export -o backup.json.gz -c config/config.ts
 - `-c, --config <path>` - Config file to export from (default: auto-detect)
 
 **What it exports**:
-- Main config (config/config.ts)
+- Main config (config/config.json)
 - All client configs
 - All server configs
 - All event configs
@@ -107,7 +145,7 @@ bun src/cli.ts export -o backup.json.gz -c config/config.ts
   "version": "1.0",
   "timestamp": "2025-11-24T10:42:13.000Z",
   "metadata": {
-    "sourceConfigPath": "/path/to/config.ts",
+    "sourceConfigPath": "/path/to/config.json",
     "configDirectory": "./config",
     "unpackConfigDir": "./config"
   },
@@ -154,9 +192,9 @@ bun src/cli.ts import \
 1. Auto-detects target directory from existing config
 2. Adjusts imported config's `configDirectory` to match
 3. Creates directory structure if needed
-4. Writes all config files (as JSON)
-5. **Automatically migrates all JSON configs to TypeScript**
-6. **Removes root `config.ts`/`config.json` if importing to `config/` directory**
+4. Writes all config files as JSON
+5. Validates and renames files if IDs don't match filenames
+6. **Removes root `config.json` if importing to `config/` directory**
 7. Optionally reloads config
 
 **Smart path adjustment**:
@@ -237,77 +275,6 @@ Merge summary:
   Target: ./config
   Added: 6 files
   Kept: 11 files
-```
-
----
-
-### config:migrate
-
-Migrate JSON configs to TypeScript format.
-
-```bash
-bun run config:migrate
-
-# With custom directory
-bun src/cli.ts migrate -d ./config
-```
-
-**Options**:
-- `-d, --dir <path>` - Config directory (default: `./config`)
-
-**What it does**:
-1. Migrates main config files (`config.json`, `config/config.json`) to TypeScript
-2. Scans for `.json` files in `clients/`, `servers/`, `events/`, `sinks/`
-3. Converts each to TypeScript with proper `define*()` wrapper
-4. Preserves formatting (2-space indent)
-5. Deletes original `.json` file after successful conversion
-6. Skips files that already have a `.ts` version
-
-**Conversion example**:
-```json
-// config/servers/libera.json
-{
-  "id": "libera",
-  "hostname": "irc.libera.chat",
-  "displayName": "Libera"
-}
-```
-
-Becomes:
-```typescript
-// config/servers/libera.ts
-import { defineServer } from '../../src/config/types';
-
-export default defineServer({
-  "id": "libera",
-  "hostname": "irc.libera.chat",
-  "displayName": "Libera"
-});
-```
-
-**Example output**:
-```
-Migrating JSON configs to TypeScript...
-Config directory: ./config
-
-Migrating clients...
-  ✓ textual.json → textual.ts
-  
-Migrating servers...
-  ✓ libera.json → libera.ts
-  ⊘ orpheus.ts already exists, skipping orpheus.json
-  
-Migrating events...
-  ✓ phrase-alert.json → phrase-alert.ts
-  ✗ direct-message.json failed: Invalid JSON
-  
-Migrating sinks...
-  ✓ console.json → console.ts
-
-Migration complete:
-  Converted: 4 files
-  Skipped: 1 file (already migrated)
-  Failed: 1 file
 ```
 
 ---
@@ -480,21 +447,6 @@ diff logs/dev-ground-truth.log logs/dev-notifications.log
 bun run dev:cleanup
 ```
 
-### JSON to TypeScript Migration
-```bash
-# Migrate all JSON configs
-bun run config:migrate
-
-# Validate TypeScript configs
-bun run config:validate
-
-# Test
-bun dev
-
-# Remove remaining JSON files if everything works
-find config -name "*.json" -delete
-```
-
 ## Environment Variables
 
 Set environment variables before running commands:
@@ -548,5 +500,4 @@ Or use in config files:
 ## Related Documentation
 
 - [Configuration Overview](./configuration.md)
-- [TypeScript Configuration](./typescript-config.md)
 - [Testing Guide](./testing.md)

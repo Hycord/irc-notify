@@ -8,6 +8,8 @@ The Config API provides external control over configuration lifecycle for runnin
 
 When enabled (run `bun run api` or execute `src/api/server.ts`), a Bun HTTP server exposes endpoints under `/api/*` while the orchestrator continues processing log events.
 
+For details on the internal API server architecture and how to add new routes, see [Server Architecture](./server-architecture.md).
+
 The API supports:
 
 - Upload a bundled `.json.gz` export and either replace or merge existing configs
@@ -68,16 +70,55 @@ API_PORT=3000 API_TOKEN=secret bun run src/api/server.ts
 |--------|------|-------------|
 | GET | `/api/health` | Simple health check |
 | GET | `/api/status` | Returns orchestrator status & config directory |
+| GET | `/api/data-flow` | Returns comprehensive data flow visualization data |
+| GET | `/api/config` | Get root configuration |
+| PUT | `/api/config` | Update root configuration (JSON/TS accepted) |
 | POST | `/api/config/reload` | Force full reload of all configs and watchers |
 | GET | `/api/config/export` | Returns current config bundle (JSON) |
 | POST | `/api/config/upload?mode=replace` | Replace config set with uploaded `.json.gz` bundle |
 | POST | `/api/config/upload?mode=merge` | Merge uploaded bundle (prefers existing) |
 | GET | `/api/config/files` | List config files by category |
-| GET | `/api/config/file/<category>/<name>` | Retrieve raw config file contents |
-| PUT | `/api/config/file/<category>/<name>` | Create/update config file (validated via reload) |
-| DELETE | `/api/config/file/<category>/<name>` | Delete config file and reload |
+| GET | `/api/config/file/<category>/<name>?format=json\|ts` | Retrieve config file (transcoded to requested format) |
+| PUT | `/api/config/file/<category>/<name>` | Create/update config file (JSON/TS accepted, stored as TS) |
+| DELETE | `/api/config/file/<category>/<name>` | Delete config file (removes both .ts and .json) and reload |
 
 Categories: `clients`, `servers`, `events`, `sinks`.
+
+For detailed information see:
+- [Root Config API](../api-server/root-config.md) - Root configuration management
+- [Data Flow API](../api-server/data-flow.md) - Data flow visualization
+
+## Configuration File Operations
+
+### Reading Files (GET)
+- **Returns**: JSON format only
+- Files are stored as JSON on disk (`.json`)
+- Response headers indicate the format
+
+### Writing Files (PUT)
+- **Accepts**: JSON objects only
+- **Always stores as JSON**: Saved as `.json` files
+- **Filename sync**: Automatically renames file if ID in content differs from filename
+- Response confirms successful update
+
+### Examples
+
+**Get config as JSON:**
+```bash
+curl -H "Authorization: Bearer $TOKEN" \
+  http://localhost:3000/api/config/file/events/phrase-alert
+# Returns: { "id": "phrase-alert", ... }
+```
+
+**Upload JSON config:**
+```bash
+curl -X PUT -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"id":"my-event","enabled":true}' \
+  http://localhost:3000/api/config/file/events/my-event
+# Stored as: config/events/my-event.json
+# Response: {"updated":true,"format":"json"}
+```
 
 ## Upload / Bundle Format
 
@@ -85,8 +126,8 @@ The API expects the export format produced by `ConfigIO.exportConfig()` (optiona
 
 Query parameter `mode` determines behavior:
 
-- `replace`: Overwrites existing config files (always uses `overwrite: true`)
-- `merge`: Preserves existing files unless absent (incoming only supplements)
+- `replace`: Wipes existing configuration set first (deletes all `.json` files in `clients/`, `servers/`, `events/`, `sinks/` and `config/config.json`), then imports the uploaded bundle. Non-JSON files (e.g. `auth_token.txt`) are preserved. Uploading an empty bundle results in an empty config set.
+- `merge`: Preserves existing files unless absent (incoming only supplements). Conflicts prefer existing by default.
 
 After import/merge the orchestrator performs a `reloadFull()` which:
 

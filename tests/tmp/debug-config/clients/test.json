@@ -1,0 +1,1 @@
+{"id":"test-client","name":"Test","enabled":true,"type":"textual","logDirectory":"./logs","discovery":{"patterns":{"channels":"**/*.txt"},"pathExtraction":{"serverPattern":"/([^/]+)/","serverGroup":1}},"serverDiscovery":{"type":"manual"},"fileType":{"type":"text","pollInterval":1000},"parserRules":[{"name":"test","pattern":"^(.*)$","priority":100,"captures":{"content":1}}]}

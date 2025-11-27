@@ -76,25 +76,25 @@ merged.server = {
 
 Override just the display name:
 
-```typescript
-export default defineStrictEvent({
-  id: "vip-alerts",
-  name: "VIP User Alerts",
-  enabled: true,
-  baseEvent: "message",
-  serverIds: ["libera"],
-  sinkIds: ["ntfy"] as const,
-  metadata: {
-    host: {
-      displayName: "Libera (VIP Channel)"
+```json
+{
+  "id": "vip-alerts",
+  "name": "VIP User Alerts",
+  "enabled": true,
+  "baseEvent": "message",
+  "serverIds": ["libera"],
+  "sinkIds": ["ntfy"],
+  "metadata": {
+    "host": {
+      "displayName": "Libera (VIP Channel)"
     },
-    sink: {
-      ntfy: {
-        priority: "urgent"
+    "sink": {
+      "ntfy": {
+        "priority": "urgent"
       }
     }
   }
-});
+}
 ```
 
 Template: `[{{server.displayName}}] {{sender.nickname}}`
@@ -104,27 +104,27 @@ Result: `[Libera (VIP Channel)] alice`
 
 Override multiple fields:
 
-```typescript
-export default defineStrictEvent({
-  id: "staff-notices",
-  name: "Staff Notices",
-  enabled: true,
-  baseEvent: "notice",
-  serverIds: ["*"],
-  sinkIds: ["console", "ntfy"] as const,
-  metadata: {
-    host: {
-      displayName: "IRC Network Staff",
-      network: "Official Notices",
-      hostname: "staff.network.local"
+```json
+{
+  "id": "staff-notices",
+  "name": "Staff Notices",
+  "enabled": true,
+  "baseEvent": "notice",
+  "serverIds": ["*"],
+  "sinkIds": ["console", "ntfy"],
+  "metadata": {
+    "host": {
+      "displayName": "IRC Network Staff",
+      "network": "Official Notices",
+      "hostname": "staff.network.local"
     },
-    sink: {
-      ntfy: {
-        tags: ["shield", "warning"]
+    "sink": {
+      "ntfy": {
+        "tags": ["shield", "warning"]
       }
     }
   }
-});
+}
 ```
 
 Template: `[{{server.network}}] {{server.displayName}}: {{message.content}}`
@@ -134,44 +134,44 @@ Result: `[Official Notices] IRC Network Staff: Server maintenance in 1 hour`
 
 Use host metadata for different contexts:
 
-```typescript
-// Event 1: Direct messages use friendly name
-export default defineStrictEvent({
-  id: "dm-alert",
-  baseEvent: "message",
-  serverIds: ["libera"],
-  filters: {
-    operator: "AND",
-    filters: [
-      { field: "target.type", operator: "equals", value: "query" }
+```json
+// Event 1: Direct messages use friendly name (config/events/dm-alert.json)
+{
+  "id": "dm-alert",
+  "baseEvent": "message",
+  "serverIds": ["libera"],
+  "filters": {
+    "operator": "AND",
+    "filters": [
+      { "field": "target.type", "operator": "equals", "value": "query" }
     ]
   },
-  sinkIds: ["ntfy"] as const,
-  metadata: {
-    host: {
-      displayName: "Private Message"
+  "sinkIds": ["ntfy"],
+  "metadata": {
+    "host": {
+      "displayName": "Private Message"
     }
   }
-});
+}
 
-// Event 2: Channel mentions use channel context
-export default defineStrictEvent({
-  id: "mention-alert",
-  baseEvent: "message",
-  serverIds: ["libera"],
-  filters: {
-    operator: "AND",
-    filters: [
-      { field: "message.content", operator: "contains", value: "{{metadata.clientNickname}}" }
+// Event 2: Channel mentions use channel context (config/events/mention-alert.json)
+{
+  "id": "mention-alert",
+  "baseEvent": "message",
+  "serverIds": ["libera"],
+  "filters": {
+    "operator": "AND",
+    "filters": [
+      { "field": "message.content", "operator": "contains", "value": "{{server.clientNickname}}" }
     ]
   },
-  sinkIds: ["ntfy"] as const,
-  metadata: {
-    host: {
-      displayName: "{{target.name}} @ Libera"
+  "sinkIds": ["ntfy"],
+  "metadata": {
+    "host": {
+      "displayName": "{{target.name}} @ Libera"
     }
   }
-});
+}
 ```
 
 ## Available Template Variables
@@ -251,37 +251,6 @@ metadata: {
   host: {
     displayName: "[DEV] {{server.displayName}}",
     network: "Development"
-  }
-}
-```
-
-## Type Safety and Autocomplete
-
-The `metadata.host` field has full TypeScript support:
-
-```typescript
-// ✅ Type-safe - autocomplete available
-metadata: {
-  host: {
-    displayName: "Custom Name",
-    hostname: "custom.host",
-    network: "Custom Network",
-    port: 6667
-  }
-}
-
-// ✅ Custom fields allowed
-metadata: {
-  host: {
-    displayName: "Name",
-    customField: "anything"
-  }
-}
-
-// ✅ Optional - can be omitted entirely
-metadata: {
-  sink: {
-    ntfy: { priority: "high" }
   }
 }
 ```

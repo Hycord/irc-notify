@@ -11,17 +11,22 @@ export class LogWatcher {
   private onMessage: (context: MessageContext) => void;
   private debug: boolean;
   private rescanOnStartup: boolean;
+  private filePositions: Map<string, number> = new Map(); // Track positions across restarts
 
   constructor(
     adapter: ClientAdapter,
     onMessage: (context: MessageContext) => void,
     debug: boolean = false,
     rescanOnStartup: boolean = false,
+    previousPositions?: Map<string, number>, // Restore positions from previous watcher
   ) {
     this.adapter = adapter;
     this.onMessage = onMessage;
     this.debug = debug;
     this.rescanOnStartup = rescanOnStartup;
+    if (previousPositions) {
+      this.filePositions = new Map(previousPositions);
+    }
   }
 
   /**
@@ -60,7 +65,15 @@ export class LogWatcher {
       return;
     }
 
-    const watcher = new FileWatcher(filePath, this.adapter, this.onMessage, this.debug);
+    const savedPosition = this.filePositions.get(filePath);
+    const watcher = new FileWatcher(
+      filePath,
+      this.adapter,
+      this.onMessage,
+      this.debug,
+      savedPosition, // Restore previous position
+      (path, pos) => this.filePositions.set(path, pos), // Save position on updates
+    );
 
     watcher.start();
     this.watchers.set(filePath, watcher);
@@ -103,6 +116,13 @@ export class LogWatcher {
   }
 
   /**
+   * Get current file positions for persistence across reloads
+   */
+  getFilePositions(): Map<string, number> {
+    return new Map(this.filePositions);
+  }
+
+  /**
    * Stop watching all files
    */
   stop(): void {
@@ -129,27 +149,39 @@ class FileWatcher {
   private onMessage: (context: MessageContext) => void;
   private debug: boolean;
   private fsWatcher?: fs.FSWatcher;
+  private pollInterval?: NodeJS.Timeout;
   private position: number = 0;
   private reading: boolean = false;
+  private onPositionUpdate?: (path: string, position: number) => void;
 
   constructor(
     filePath: string,
     adapter: ClientAdapter,
     onMessage: (context: MessageContext) => void,
     debug: boolean = false,
+    savedPosition?: number,
+    onPositionUpdate?: (path: string, position: number) => void,
   ) {
     this.filePath = filePath;
     this.adapter = adapter;
     this.onMessage = onMessage;
     this.debug = debug;
+    this.onPositionUpdate = onPositionUpdate;
+    if (savedPosition !== undefined) {
+      this.position = savedPosition;
+      this.log(`Restoring saved position: ${savedPosition}`);
+    }
   }
 
   /**
    * Start watching the file
    */
   start(): void {
-    // Read initial content to get to end of file
-    this.seekToEnd();
+    // Only seek to end if we don't have a saved position
+    if (this.position === 0) {
+      // Read initial content to get to end of file
+      this.seekToEnd();
+    }
 
     // Watch for changes
     this.fsWatcher = fs.watch(this.filePath, (eventType) => {
@@ -159,7 +191,7 @@ class FileWatcher {
     });
 
     // Also poll periodically in case fs.watch misses events
-    setInterval(() => {
+    this.pollInterval = setInterval(() => {
       this.readNewLines();
     }, 1000);
   }
@@ -171,6 +203,10 @@ class FileWatcher {
     if (this.fsWatcher) {
       this.fsWatcher.close();
       this.fsWatcher = undefined;
+    }
+    if (this.pollInterval) {
+      clearInterval(this.pollInterval);
+      this.pollInterval = undefined;
     }
   }
 
@@ -246,6 +282,10 @@ class FileWatcher {
       }
 
       this.position = stats.size;
+      // Notify parent of position update
+      if (this.onPositionUpdate) {
+        this.onPositionUpdate(this.filePath, this.position);
+      }
     } catch (error) {
       this.log(`Error reading ${this.filePath}:`, error);
     } finally {

@@ -57,9 +57,6 @@ export class ConfigValidator {
     if (!config.id) {
       throw new ConfigValidationError("Missing required field: id", "ClientConfig");
     }
-    if (!config.type) {
-      throw new ConfigValidationError("Missing required field: type", "ClientConfig", config.id);
-    }
     if (!config.name) {
       throw new ConfigValidationError("Missing required field: name", "ClientConfig", config.id);
     }
@@ -262,28 +259,14 @@ export class ConfigValidator {
       );
     }
 
-    // Validate serverIds
+    // Validate serverIds (allow empty for orphaned components)
     if (!config.serverIds || !Array.isArray(config.serverIds)) {
       throw new ConfigValidationError("serverIds must be an array", "EventConfig", config.id);
     }
-    if (config.serverIds.length === 0) {
-      throw new ConfigValidationError(
-        "serverIds must contain at least one server ID",
-        "EventConfig",
-        config.id,
-      );
-    }
 
-    // Validate sinkIds
+    // Validate sinkIds (allow empty for orphaned components)
     if (!config.sinkIds || !Array.isArray(config.sinkIds)) {
       throw new ConfigValidationError("sinkIds must be an array", "EventConfig", config.id);
-    }
-    if (config.sinkIds.length === 0) {
-      throw new ConfigValidationError(
-        "sinkIds must contain at least one sink ID",
-        "EventConfig",
-        config.id,
-      );
     }
 
     // Validate filters if present
@@ -524,6 +507,19 @@ export class ConfigValidator {
             config.id,
           );
         }
+        // Validate payload transforms if present
+        if (config.payloadTransforms) {
+          if (!Array.isArray(config.payloadTransforms)) {
+            throw new ConfigValidationError(
+              "payloadTransforms must be an array",
+              "SinkConfig",
+              config.id,
+            );
+          }
+          config.payloadTransforms.forEach((transform, index) => {
+            this.validatePayloadTransform(transform, config.id, index);
+          });
+        }
         break;
 
       case "file":
@@ -543,6 +539,72 @@ export class ConfigValidator {
       case "custom":
         // Custom sinks are flexible
         break;
+    }
+  }
+
+  /**
+   * Validate a PayloadTransform
+   */
+  static validatePayloadTransform(
+    transform: import("../types").PayloadTransform,
+    sinkId: string,
+    index: number,
+  ): void {
+    if (!transform.name) {
+      throw new ConfigValidationError(
+        `payloadTransforms[${index}]: Missing required field: name`,
+        "SinkConfig",
+        sinkId,
+      );
+    }
+    if (!transform.bodyFormat) {
+      throw new ConfigValidationError(
+        `payloadTransforms[${index}]: Missing required field: bodyFormat`,
+        "SinkConfig",
+        sinkId,
+      );
+    }
+
+    const validBodyFormats = ["json", "text", "form", "custom"];
+    if (!validBodyFormats.includes(transform.bodyFormat)) {
+      throw new ConfigValidationError(
+        `payloadTransforms[${index}] (${transform.name}): Invalid bodyFormat: ${transform.bodyFormat}. Must be one of: ${validBodyFormats.join(", ")}`,
+        "SinkConfig",
+        sinkId,
+      );
+    }
+
+    // Validate format-specific requirements
+    if (transform.bodyFormat === "json" && !transform.jsonTemplate) {
+      throw new ConfigValidationError(
+        `payloadTransforms[${index}] (${transform.name}): bodyFormat 'json' requires 'jsonTemplate'`,
+        "SinkConfig",
+        sinkId,
+      );
+    }
+    if (transform.bodyFormat === "form" && !transform.formTemplate) {
+      throw new ConfigValidationError(
+        `payloadTransforms[${index}] (${transform.name}): bodyFormat 'form' requires 'formTemplate'`,
+        "SinkConfig",
+        sinkId,
+      );
+    }
+
+    // Validate condition filter if present
+    if (transform.condition) {
+      if (isFilterConfig(transform.condition)) {
+        this.validateFilterConfig(
+          transform.condition,
+          `${sinkId}.payloadTransforms[${index}]`,
+          "condition",
+        );
+      } else if (isFilterGroup(transform.condition)) {
+        this.validateFilterGroup(
+          transform.condition,
+          `${sinkId}.payloadTransforms[${index}]`,
+          "condition",
+        );
+      }
     }
   }
 
@@ -612,17 +674,17 @@ export class ConfigValidator {
       }
     }
 
-    // Validate arrays
-    if (!config.clients || !Array.isArray(config.clients)) {
+    // Validate arrays (optional - if not provided, configs will be auto-discovered)
+    if (config.clients !== undefined && !Array.isArray(config.clients)) {
       throw new ConfigValidationError("clients must be an array", "IRCNotifyConfig");
     }
-    if (!config.servers || !Array.isArray(config.servers)) {
+    if (config.servers !== undefined && !Array.isArray(config.servers)) {
       throw new ConfigValidationError("servers must be an array", "IRCNotifyConfig");
     }
-    if (!config.events || !Array.isArray(config.events)) {
+    if (config.events !== undefined && !Array.isArray(config.events)) {
       throw new ConfigValidationError("events must be an array", "IRCNotifyConfig");
     }
-    if (!config.sinks || !Array.isArray(config.sinks)) {
+    if (config.sinks !== undefined && !Array.isArray(config.sinks)) {
       throw new ConfigValidationError("sinks must be an array", "IRCNotifyConfig");
     }
   }
@@ -643,69 +705,39 @@ export class ConfigValidator {
 
     // Validate event references
     for (const event of events) {
-      // Check server references (allow wildcard)
-      for (const serverId of event.serverIds) {
-        if (serverId !== "*" && !serverIds.has(serverId)) {
-          throw new ConfigValidationError(
-            `references non-existent server: ${serverId}`,
-            "EventConfig",
-            event.id,
-            "serverIds",
+      // Auto-prune invalid server references (allow wildcard '*')
+      if (Array.isArray(event.serverIds)) {
+        const original = event.serverIds.slice();
+        const filtered = original.filter((sid) => sid === "*" || serverIds.has(sid));
+        if (filtered.length !== original.length) {
+          const removed = original.filter((sid) => !filtered.includes(sid));
+          console.warn(
+            `[validation] Event '${event.id}': removed non-existent serverIds: ${removed.join(", ")}`,
+          );
+          // De-duplicate while preserving order
+          const seen = new Set<string>();
+          event.serverIds = filtered.filter((s) =>
+            s === "*" ? true : !seen.has(s) && !!seen.add(s),
           );
         }
       }
 
-      // Check sink references
-      for (const sinkId of event.sinkIds) {
-        if (!sinkIds.has(sinkId)) {
-          throw new ConfigValidationError(
-            `references non-existent sink: ${sinkId}`,
-            "EventConfig",
-            event.id,
-            "sinkIds",
+      // Auto-prune invalid sink references
+      if (Array.isArray(event.sinkIds)) {
+        const original = event.sinkIds.slice();
+        const filtered = original.filter((sid) => sinkIds.has(sid));
+        if (filtered.length !== original.length) {
+          const removed = original.filter((sid) => !filtered.includes(sid));
+          console.warn(
+            `[validation] Event '${event.id}': removed non-existent sinkIds: ${removed.join(", ")}`,
           );
+          const seen = new Set<string>();
+          event.sinkIds = filtered.filter((s) => !seen.has(s) && !!seen.add(s));
         }
       }
     }
   }
 }
 
-/**
- * Helper to create a typed client config
- */
-export function defineClient(config: ClientConfig): ClientConfig {
-  ConfigValidator.validateClient(config);
-  return config;
-}
-
-/**
- * Helper to create a typed server config
- */
-export function defineServer(config: ServerConfig): ServerConfig {
-  ConfigValidator.validateServer(config);
-  return config;
-}
-
-/**
- * Helper to create a typed event config
- */
-export function defineEvent(config: EventConfig): EventConfig {
-  ConfigValidator.validateEvent(config);
-  return config;
-}
-
-/**
- * Helper to create a typed sink config
- */
-export function defineSink(config: SinkConfig): SinkConfig {
-  ConfigValidator.validateSink(config);
-  return config;
-}
-
-/**
- * Helper to create typed main config
- */
-export function defineConfig(config: IRCNotifyConfig): IRCNotifyConfig {
-  ConfigValidator.validateMain(config);
-  return config;
-}
+// Note: define* helper functions removed - JSON configs don't need them
+// Validation still occurs in ConfigLoader.load() via ConfigValidator

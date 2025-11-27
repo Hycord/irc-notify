@@ -2,28 +2,30 @@ import * as fs from "fs";
 import * as path from "path";
 import { ClientConfig, EventConfig, IRCNotifyConfig, ServerConfig, SinkConfig } from "../types";
 import { EnvSubstitution } from "../utils/env";
-import { ConfigRegistry } from "./registry";
+import { ConfigIO } from "./import-export";
 import { ConfigValidator } from "./types";
 
 /**
  * Configuration loader that loads from directory structure
- * Supports both .ts and .json config files
- * config/clients/<id>.ts|.json
- * config/servers/<id>.ts|.json
- * config/events/<id>.ts|.json
- * config/sinks/<id>.ts|.json
+ * All configs are JSON files
+ * config/clients/<id>.json
+ * config/servers/<id>.json
+ * config/events/<id>.json
+ * config/sinks/<id>.json
  */
 export class ConfigLoader {
+  // Track event file paths and original references to persist auto-fixes
+  private static eventFileMap: Map<string, string> = new Map(); // eventId -> absolute file path (.json)
+  private static eventServerIdsOriginal: Map<string, string[]> = new Map();
+  private static eventSinkIdsOriginal: Map<string, string[]> = new Map();
   /**
    * Find main config file using standard resolution order
-   * Prioritizes /config directory, falls back to config.default.ts
+   * Prioritizes /config directory, falls back to config.default.json
    */
   static async findConfigFile(): Promise<string> {
     const candidates = [
-      "config/config.ts", // Primary location
-      "config/config.json",
-      "config.ts", // Legacy root location
-      "config.json",
+      "config/config.json", // Primary location
+      "config.json", // Legacy root location
       "config.dev.json",
     ];
 
@@ -33,9 +35,9 @@ export class ConfigLoader {
       }
     }
 
-    // If no config found, check for config.default.ts and copy it to config/config.ts
-    if (fs.existsSync("config.default.ts")) {
-      console.log("No configuration found. Initializing from config.default.ts...");
+    // If no config found, check for config.default.json
+    if (fs.existsSync("config.default.json")) {
+      console.log("No configuration found. Initializing from config.default.json...");
 
       // Create config directory if it doesn't exist
       const configDir = "config";
@@ -43,24 +45,19 @@ export class ConfigLoader {
         fs.mkdirSync(configDir, { recursive: true });
       }
 
-      // Copy default config to config/config.ts
-      const defaultContent = fs.readFileSync("config.default.ts", "utf-8");
-      // Update the import path in the copied file (from root to config/ subdirectory)
-      const updatedContent = defaultContent.replace(
-        'import { defineConfig } from "./src/config/types";',
-        'import { defineConfig } from "../src/config/types";',
-      );
-      fs.writeFileSync("config/config.ts", updatedContent);
-      console.log("✓ Created config/config.ts from config.default.ts");
+      // Copy default config to config/config.json
+      const defaultContent = fs.readFileSync("config.default.json", "utf-8");
+      fs.writeFileSync("config/config.json", defaultContent);
+      console.log("✓ Created config/config.json from config.default.json");
 
-      return path.resolve("config/config.ts");
+      return path.resolve("config/config.json");
     }
 
     throw new Error(
       "No configuration file found. Looked for: " +
         candidates.join(", ") +
         "\n" +
-        "Create config/config.ts or place config.default.ts in the root directory.",
+        "Create config/config.json or place config.default.json in the root directory.",
     );
   }
 
@@ -84,26 +81,13 @@ export class ConfigLoader {
       throw new Error(`Configuration file not found: ${configPath}`);
     }
 
+    // Load as JSON
+    const content = fs.readFileSync(configPath, "utf-8");
     let config: IRCNotifyConfig;
-
-    // Check if it's a TypeScript file
-    if (configPath.endsWith(".ts")) {
-      // Ensure globals are loaded before importing main config
-      await this.ensureGlobalHelpers();
-
-      // Convert to absolute path with file:// protocol for dynamic import
-      const absolutePath = path.isAbsolute(configPath) ? configPath : path.resolve(configPath);
-      const fileUrl = `file://${absolutePath}`;
-      const module = await import(fileUrl);
-      config = module.default;
-    } else {
-      // Load as JSON
-      const content = fs.readFileSync(configPath, "utf-8");
-      try {
-        config = JSON.parse(content);
-      } catch (error) {
-        throw new Error(`Failed to parse configuration file: ${error}`);
-      }
+    try {
+      config = JSON.parse(content);
+    } catch (error) {
+      throw new Error(`Failed to parse configuration file: ${error}`);
     }
 
     // Apply environment variable substitution
@@ -118,29 +102,18 @@ export class ConfigLoader {
       configDir = path.resolve(path.dirname(configPath), configDir);
     }
 
-    // Clear registry before loading
-    ConfigRegistry.clear();
-
     // Load configs in dependency order:
     // 1. Clients (no dependencies)
     // 2. Sinks (no dependencies, but needed by events)
     // 3. Servers (no dependencies, but needed by events)
     // 4. Events (depend on servers and sinks)
-    // Note: Sub-configs are validated via registry during load if using .ts files
-    const clients = await this.loadClients(config.clients, configDir);
-    const sinks = await this.loadSinks(config.sinks, configDir);
-    const servers = await this.loadServers(config.servers, configDir);
-    const events = await this.loadEvents(config.events, configDir);
+    // Note: All configs are JSON files
+    const clients = await this.loadClients(config.clients || [], configDir);
+    const sinks = await this.loadSinks(config.sinks || [], configDir);
+    const servers = await this.loadServers(config.servers || [], configDir);
+    const events = await this.loadEvents(config.events || [], configDir);
 
-    // Register all loaded configs in the registry (needed for JSON configs)
-    clients.forEach((c) => ConfigRegistry.registerClient(c));
-    sinks.forEach((s) => ConfigRegistry.registerSink(s));
-    servers.forEach((s) => ConfigRegistry.registerServer(s));
-    ConfigRegistry.registerMainConfig(config);
-    events.forEach((e) => ConfigRegistry.registerEvent(e));
-
-    // Validate cross-references after all configs are registered
-    ConfigRegistry.validateMainConfigReferences(config);
+    // Validate configurations
 
     // Final validation pass for JSON configs and cross-references
     ConfigValidator.validateMain(config);
@@ -150,39 +123,14 @@ export class ConfigLoader {
     sinks.forEach((s) => ConfigValidator.validateSink(s));
     ConfigValidator.validateReferences(config, clients, servers, events, sinks);
 
+    // Persist any auto-fixes made during validation (e.g., pruning invalid IDs)
+    await this.persistEventReferenceFixes(events);
+
     return { config, clients, servers, events, sinks };
   }
 
   /**
-   * Ensure global helpers are loaded
-   * Made public for use by ConfigIO
-   */
-  private static globalHelpersLoaded = false;
-  static async ensureGlobalHelpers(): Promise<void> {
-    if (this.globalHelpersLoaded) return;
-
-    try {
-      // Try both possible locations for preload file
-      const candidates = [
-        path.resolve(__dirname, "../types/preload.ts"),
-        path.resolve(__dirname, "../../config/preload.ts"),
-      ];
-
-      for (const preloadPath of candidates) {
-        if (fs.existsSync(preloadPath)) {
-          await import(`file://${preloadPath}`);
-          break;
-        }
-      }
-    } catch (error) {
-      // Preload is optional
-    }
-
-    this.globalHelpersLoaded = true;
-  }
-
-  /**
-   * Load a single config file (supports both .ts and .json)
+   * Load a single config file (JSON only)
    */
   private static async loadConfigFile<T>(filePath: string): Promise<T | null> {
     if (!fs.existsSync(filePath)) {
@@ -190,33 +138,50 @@ export class ConfigLoader {
     }
 
     try {
-      if (filePath.endsWith(".ts")) {
-        // Ensure globals are loaded before importing TS configs
-        await this.ensureGlobalHelpers();
-
-        // Convert to absolute path with file:// protocol for dynamic import
-        const absolutePath = path.isAbsolute(filePath) ? filePath : path.resolve(filePath);
-        const fileUrl = `file://${absolutePath}`;
-        const module = await import(fileUrl);
-        return module.default;
-      } else {
-        const content = fs.readFileSync(filePath, "utf-8");
-        let config = JSON.parse(content);
-        config = EnvSubstitution.substituteObject(config);
-        return config;
+      const content = fs.readFileSync(filePath, "utf-8");
+      let config = JSON.parse(content);
+      config = EnvSubstitution.substituteObject(config);
+      return config;
+    } catch (error: any) {
+      console.error(`Failed to load config ${filePath}:`);
+      console.error(`  Error: ${error.message || error}`);
+      if (error.stack) {
+        console.error(`  Stack: ${error.stack.split("\n")[0]}`);
       }
-    } catch (error) {
-      console.error(`Failed to load config ${filePath}:`, error);
       return null;
     }
   }
 
   /**
    * Load client configurations
+   * If refs is empty, discovers all configs in the clients directory
    */
   private static async loadClients(refs: string[], configDir: string): Promise<ClientConfig[]> {
     const clients: ClientConfig[] = [];
 
+    // If no refs provided, discover all files in clients directory
+    if (refs.length === 0) {
+      const clientsDir = path.join(configDir, "clients");
+      if (fs.existsSync(clientsDir)) {
+        const files = fs
+          .readdirSync(clientsDir)
+          .filter((f) => f.endsWith(".json"))
+          .map((f) => path.join(clientsDir, f));
+
+        for (const filePath of files) {
+          const client = await this.loadConfigFile<ClientConfig>(filePath);
+          if (client) {
+            if (!client.id) {
+              client.id = path.basename(filePath).replace(/\.json$/, "");
+            }
+            clients.push(client);
+          }
+        }
+      }
+      return clients;
+    }
+
+    // Otherwise load specified refs
     for (const ref of refs) {
       const filePath = this.resolveConfigPath(ref, configDir, "clients");
       const client = await this.loadConfigFile<ClientConfig>(filePath);
@@ -228,7 +193,7 @@ export class ConfigLoader {
 
       // Set ID from filename if not present
       if (!client.id) {
-        client.id = path.basename(filePath).replace(/\.(ts|json)$/, "");
+        client.id = path.basename(filePath).replace(/\.json$/, "");
       }
 
       clients.push(client);
@@ -239,10 +204,34 @@ export class ConfigLoader {
 
   /**
    * Load server configurations
+   * If refs is empty, discovers all configs in the servers directory
    */
   private static async loadServers(refs: string[], configDir: string): Promise<ServerConfig[]> {
     const servers: ServerConfig[] = [];
 
+    // If no refs provided, discover all files in servers directory
+    if (refs.length === 0) {
+      const serversDir = path.join(configDir, "servers");
+      if (fs.existsSync(serversDir)) {
+        const files = fs
+          .readdirSync(serversDir)
+          .filter((f) => f.endsWith(".json"))
+          .map((f) => path.join(serversDir, f));
+
+        for (const filePath of files) {
+          const server = await this.loadConfigFile<ServerConfig>(filePath);
+          if (server) {
+            if (!server.id) {
+              server.id = path.basename(filePath).replace(/\.(ts|json)$/, "");
+            }
+            servers.push(server);
+          }
+        }
+      }
+      return servers;
+    }
+
+    // Otherwise load specified refs
     for (const ref of refs) {
       const filePath = this.resolveConfigPath(ref, configDir, "servers");
       const server = await this.loadConfigFile<ServerConfig>(filePath);
@@ -264,10 +253,46 @@ export class ConfigLoader {
 
   /**
    * Load event configurations
+   * If refs is empty, discovers all configs in the events directory
    */
   private static async loadEvents(refs: string[], configDir: string): Promise<EventConfig[]> {
     const events: EventConfig[] = [];
+    // Reset tracking maps for a fresh load
+    this.eventFileMap = new Map();
+    this.eventServerIdsOriginal = new Map();
+    this.eventSinkIdsOriginal = new Map();
 
+    // If no refs provided, discover all files in events directory
+    if (refs.length === 0) {
+      const eventsDir = path.join(configDir, "events");
+      if (fs.existsSync(eventsDir)) {
+        const files = fs
+          .readdirSync(eventsDir)
+          .filter((f) => f.endsWith(".json"))
+          .map((f) => path.join(eventsDir, f));
+
+        for (const filePath of files) {
+          const event = await this.loadConfigFile<EventConfig>(filePath);
+          if (event) {
+            if (!event.id) {
+              event.id = path.basename(filePath).replace(/\.json$/, "");
+            }
+            // Track original references and file mapping
+            this.eventFileMap.set(event.id, path.resolve(filePath));
+            if (Array.isArray(event.serverIds)) {
+              this.eventServerIdsOriginal.set(event.id, [...event.serverIds]);
+            }
+            if (Array.isArray(event.sinkIds)) {
+              this.eventSinkIdsOriginal.set(event.id, [...event.sinkIds]);
+            }
+            events.push(event);
+          }
+        }
+      }
+      return events;
+    }
+
+    // Otherwise load specified refs
     for (const ref of refs) {
       const filePath = this.resolveConfigPath(ref, configDir, "events");
       const event = await this.loadConfigFile<EventConfig>(filePath);
@@ -278,7 +303,16 @@ export class ConfigLoader {
       }
 
       if (!event.id) {
-        event.id = path.basename(filePath).replace(/\.(ts|json)$/, "");
+        event.id = path.basename(filePath).replace(/\.json$/, "");
+      }
+
+      // Track original references and file mapping
+      this.eventFileMap.set(event.id, path.resolve(filePath));
+      if (Array.isArray(event.serverIds)) {
+        this.eventServerIdsOriginal.set(event.id, [...event.serverIds]);
+      }
+      if (Array.isArray(event.sinkIds)) {
+        this.eventSinkIdsOriginal.set(event.id, [...event.sinkIds]);
       }
 
       events.push(event);
@@ -289,10 +323,34 @@ export class ConfigLoader {
 
   /**
    * Load sink configurations
+   * If refs is empty, discovers all configs in the sinks directory
    */
   private static async loadSinks(refs: string[], configDir: string): Promise<SinkConfig[]> {
     const sinks: SinkConfig[] = [];
 
+    // If no refs provided, discover all files in sinks directory
+    if (refs.length === 0) {
+      const sinksDir = path.join(configDir, "sinks");
+      if (fs.existsSync(sinksDir)) {
+        const files = fs
+          .readdirSync(sinksDir)
+          .filter((f) => f.endsWith(".json"))
+          .map((f) => path.join(sinksDir, f));
+
+        for (const filePath of files) {
+          const sink = await this.loadConfigFile<SinkConfig>(filePath);
+          if (sink) {
+            if (!sink.id) {
+              sink.id = path.basename(filePath).replace(/\.json$/, "");
+            }
+            sinks.push(sink);
+          }
+        }
+      }
+      return sinks;
+    }
+
+    // Otherwise load specified refs
     for (const ref of refs) {
       const filePath = this.resolveConfigPath(ref, configDir, "sinks");
       const sink = await this.loadConfigFile<SinkConfig>(filePath);
@@ -303,7 +361,7 @@ export class ConfigLoader {
       }
 
       if (!sink.id) {
-        sink.id = path.basename(filePath).replace(/\.(ts|json)$/, "");
+        sink.id = path.basename(filePath).replace(/\.json$/, "");
       }
 
       sinks.push(sink);
@@ -314,35 +372,23 @@ export class ConfigLoader {
 
   /**
    * Resolve a config reference to a file path
-   * Checks for both .ts and .json extensions
+   * Only handles .json files
    */
   private static resolveConfigPath(ref: string, configDir: string, category: string): string {
     // If it's already a full path with extension, use it
-    if (
-      (ref.includes("/") || ref.includes("\\")) &&
-      (ref.endsWith(".ts") || ref.endsWith(".json"))
-    ) {
+    if ((ref.includes("/") || ref.includes("\\")) && ref.endsWith(".json")) {
       return path.resolve(configDir, ref);
     }
 
-    // If it's a path without extension, try both
+    // If it's a path without extension, add .json
     if (ref.includes("/") || ref.includes("\\")) {
-      const tsPath = path.resolve(configDir, `${ref}.ts`);
       const jsonPath = path.resolve(configDir, `${ref}.json`);
-
-      if (fs.existsSync(tsPath)) return tsPath;
-      if (fs.existsSync(jsonPath)) return jsonPath;
-      return tsPath; // Default to .ts for error messages
+      return jsonPath;
     }
 
     // Otherwise treat as ID and look for file in category directory
-    // Prefer .ts over .json
-    const tsPath = path.join(configDir, category, `${ref}.ts`);
     const jsonPath = path.join(configDir, category, `${ref}.json`);
-
-    if (fs.existsSync(tsPath)) return tsPath;
-    if (fs.existsSync(jsonPath)) return jsonPath;
-    return tsPath; // Default to .ts for error messages
+    return jsonPath;
   }
 
   /**
@@ -361,5 +407,33 @@ export class ConfigLoader {
     config.sinks = config.sinks || [];
 
     return config;
+  }
+
+  /** Persist pruned serverIds/sinkIds back to their event files if they changed */
+  private static async persistEventReferenceFixes(events: EventConfig[]): Promise<void> {
+    for (const event of events) {
+      const filePath = this.eventFileMap.get(event.id);
+      if (!filePath) continue;
+
+      const originalServers = this.eventServerIdsOriginal.get(event.id) || [];
+      const originalSinks = this.eventSinkIdsOriginal.get(event.id) || [];
+      const currentServers = Array.isArray(event.serverIds) ? event.serverIds : [];
+      const currentSinks = Array.isArray(event.sinkIds) ? event.sinkIds : [];
+
+      const serversChanged = originalServers.join("\u0000") !== currentServers.join("\u0000");
+      const sinksChanged = originalSinks.join("\u0000") !== currentSinks.join("\u0000");
+
+      if (serversChanged || sinksChanged) {
+        try {
+          const basePath = filePath.replace(/\.json$/, "");
+          ConfigIO.writeConfigFile(basePath, JSON.stringify(event, null, 2), "events");
+          console.log(
+            `[validation] Saved updated references for event '${event.id}' → events/${path.basename(basePath)}.json`,
+          );
+        } catch (e) {
+          console.warn(`[validation] Failed to persist fixes for event '${event.id}':`, e);
+        }
+      }
+    }
   }
 }
